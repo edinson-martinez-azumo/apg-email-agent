@@ -22,12 +22,12 @@ Guidelines:
 
 Output format — two parts, nothing else:
 1. First line exactly: CONFIDENCE: <1-5>
-   Score meaning:
-   5 = Products perfectly match the customer's exact need
-   4 = Good match, minor gaps
-   3 = Partial match, some relevant products found
-   2 = Weak match, products are tangentially related
-   1 = No match found, responding generally
+   Score meaning (use one decimal, e.g. 4.2):
+   5.0 = Products perfectly match the customer's exact need
+   4.0 = Good match, minor gaps
+   3.0 = Partial match, some relevant products found
+   2.0 = Weak match, products are tangentially related
+   1.0 = No match found, responding generally
 2. The email body starting on the very next line — no blank line between score and body
 """
 
@@ -76,7 +76,7 @@ def _build_product_context(products: list[dict]) -> str:
     return "Relevant APG products:\n\n" + "\n\n".join(blocks)
 
 
-def generate_draft(email_subject: str, email_body: str, products: list[dict]) -> tuple[str, int]:
+def generate_draft(email_subject: str, email_body: str, products: list[dict]) -> tuple[str, float]:
     """
     Generate a reply draft given pre-fetched products.
     Returns (draft_body, confidence_score 1-5).
@@ -103,12 +103,12 @@ Please write a professional reply email body (no subject line needed)."""
     return _parse_response(response.content[0].text)
 
 
-def _parse_response(text: str) -> tuple[str, int]:
+def _parse_response(text: str) -> tuple[str, float]:
     lines = text.strip().split('\n')
-    score = 3  # default
+    score = 3.0
     if lines and lines[0].upper().startswith('CONFIDENCE:'):
         try:
-            score = max(1, min(5, int(lines[0].split(':')[1].strip())))
+            score = max(1.0, min(5.0, float(lines[0].split(':')[1].strip())))
             text = '\n'.join(lines[1:]).lstrip('\n')
         except (ValueError, IndexError):
             pass

@@ -120,7 +120,8 @@ function ConfidenceBadge({ score }: { score: number | null }) {
   if (score == null) return null
   const high = score >= 4
   const low = score <= 2
-  const label = high ? `Score ${score}/5 — High confidence` : low ? `Score ${score}/5 — Review carefully` : `Score ${score}/5`
+  const display = score.toFixed(1)
+  const label = high ? `Score ${display}/5 — High confidence` : low ? `Score ${display}/5 — Review carefully` : `Score ${display}/5`
   const cls = high
     ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
     : low
