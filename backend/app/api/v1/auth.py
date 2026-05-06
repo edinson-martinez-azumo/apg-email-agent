@@ -34,9 +34,6 @@ def _make_flow() -> Flow:
 async def gmail_auth(db: AsyncSession = Depends(get_db)):
     state = secrets.token_urlsafe(32)
 
-    await db.merge(AppSetting(key=f'oauth_state:{state}', value='1'))
-    await db.commit()
-
     flow = _make_flow()
     auth_url, _ = flow.authorization_url(
         access_type='offline',
@@ -44,6 +41,12 @@ async def gmail_auth(db: AsyncSession = Depends(get_db)):
         prompt='consent',
         state=state,
     )
+
+    # Persist code_verifier so PKCE survives across serverless instances
+    code_verifier = getattr(flow.oauth2session, '_code_verifier', '') or ''
+    await db.merge(AppSetting(key=f'oauth_state:{state}', value=code_verifier))
+    await db.commit()
+
     return RedirectResponse(auth_url)
 
 
@@ -56,9 +59,12 @@ async def gmail_callback(code: str, state: str, db: AsyncSession = Depends(get_d
     if row is None:
         raise HTTPException(status_code=400, detail='Invalid or expired OAuth state. Restart auth flow.')
 
+    code_verifier = row.value
     await db.execute(delete(AppSetting).where(AppSetting.key == f'oauth_state:{state}'))
 
     flow = _make_flow()
+    if code_verifier:
+        flow.oauth2session._code_verifier = code_verifier
     flow.fetch_token(code=code)
 
     creds = flow.credentials
