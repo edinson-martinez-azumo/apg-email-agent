@@ -65,7 +65,10 @@ async def gmail_callback(code: str, state: str, db: AsyncSession = Depends(get_d
     flow = _make_flow()
     if code_verifier:
         flow.oauth2session._code_verifier = code_verifier
-    flow.fetch_token(code=code)
+    try:
+        flow.fetch_token(code=code)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f'fetch_token failed: {exc}')
 
     creds = flow.credentials
     token_data = {
