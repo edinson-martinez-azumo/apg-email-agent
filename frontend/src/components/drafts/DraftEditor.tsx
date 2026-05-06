@@ -207,8 +207,8 @@ export function DraftEditor({
                 <div className="prose prose-sm max-w-none text-foreground/90 leading-relaxed
                   [&_p]:mb-3 [&_p:last-child]:mb-0
                   [&_strong]:text-foreground [&_strong]:font-semibold
-                  [&_ul]:my-2 [&_ul]:pl-5 [&_li]:my-0.5
-                  [&_ol]:my-2 [&_ol]:pl-5
+                  [&_ul]:my-2 [&_ul]:pl-5 [&_ul]:list-disc [&_li]:my-0.5
+                  [&_ol]:my-2 [&_ol]:pl-5 [&_ol]:list-decimal
                   [&_h1]:text-base [&_h1]:font-semibold [&_h1]:mb-2 [&_h1]:text-foreground
                   [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:mb-1.5 [&_h2]:text-foreground
                   [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mb-1 [&_h3]:text-foreground

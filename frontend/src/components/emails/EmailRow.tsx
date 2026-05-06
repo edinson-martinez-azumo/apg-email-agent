@@ -219,8 +219,8 @@ function DraftContent({ email }: { email: Email }) {
               <div className="text-sm text-foreground/85 leading-relaxed
                 [&_p]:mb-2 [&_p:last-child]:mb-0
                 [&_strong]:font-semibold [&_strong]:text-foreground
-                [&_ul]:my-1.5 [&_ul]:pl-4 [&_li]:my-0.5
-                [&_ol]:my-1.5 [&_ol]:pl-4
+                [&_ul]:my-1.5 [&_ul]:pl-4 [&_ul]:list-disc [&_li]:my-0.5
+                [&_ol]:my-1.5 [&_ol]:pl-4 [&_ol]:list-decimal
                 [&_h1]:text-sm [&_h1]:font-semibold [&_h1]:mb-1.5
                 [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:mb-1
                 [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mb-1
@@ -334,8 +334,8 @@ function SentContent({ email }: { email: Email }) {
               <div className="text-sm text-foreground/85 leading-relaxed
                 [&_p]:mb-2 [&_p:last-child]:mb-0
                 [&_strong]:font-semibold [&_strong]:text-foreground
-                [&_ul]:my-1.5 [&_ul]:pl-4 [&_li]:my-0.5
-                [&_ol]:my-1.5 [&_ol]:pl-4
+                [&_ul]:my-1.5 [&_ul]:pl-4 [&_ul]:list-disc [&_li]:my-0.5
+                [&_ol]:my-1.5 [&_ol]:pl-4 [&_ol]:list-decimal
                 [&_h1]:text-sm [&_h1]:font-semibold [&_h1]:mb-1.5
                 [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:mb-1
                 [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mb-1
