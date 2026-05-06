@@ -63,10 +63,11 @@ async def gmail_callback(code: str, state: str, db: AsyncSession = Depends(get_d
     await db.execute(delete(AppSetting).where(AppSetting.key == f'oauth_state:{state}'))
 
     flow = _make_flow()
-    if code_verifier:
-        flow.oauth2session._code_verifier = code_verifier
     try:
-        flow.fetch_token(code=code)
+        fetch_kwargs = {'code': code}
+        if code_verifier:
+            fetch_kwargs['code_verifier'] = code_verifier
+        flow.fetch_token(**fetch_kwargs)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f'fetch_token failed: {exc}')
 
