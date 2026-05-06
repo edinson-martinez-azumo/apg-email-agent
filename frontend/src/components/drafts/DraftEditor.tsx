@@ -37,7 +37,9 @@ function applyFormat(
   let selEnd: number
 
   if (action.block) {
-    insert = action.prefix + (selected || '')
+    const needsNewline = start > 0 && value[start - 1] !== '\n'
+    const pre = needsNewline ? '\n' : ''
+    insert = pre + action.prefix + (selected || '')
     selStart = selEnd = start + insert.length
   } else {
     const inner = selected || 'text'
