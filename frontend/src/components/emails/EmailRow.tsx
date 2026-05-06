@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
+import ReactMarkdown from 'react-markdown'
 import { StatusBadge } from './StatusBadge'
 import { formatRelativeTime } from '@/lib/utils'
 import type { Email } from '@/types/api'
@@ -215,9 +216,17 @@ function DraftContent({ email }: { email: Email }) {
           )}
           {draft && (
             <div className="max-h-52 overflow-y-auto rounded-lg bg-muted/30 px-3 py-2.5">
-              <pre className="text-sm whitespace-pre-wrap font-sans text-foreground/85 leading-relaxed">
-                {draftBody}
-              </pre>
+              <div className="text-sm text-foreground/85 leading-relaxed
+                [&_p]:mb-2 [&_p:last-child]:mb-0
+                [&_strong]:font-semibold [&_strong]:text-foreground
+                [&_ul]:my-1.5 [&_ul]:pl-4 [&_li]:my-0.5
+                [&_ol]:my-1.5 [&_ol]:pl-4
+                [&_h1]:text-sm [&_h1]:font-semibold [&_h1]:mb-1.5
+                [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:mb-1
+                [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mb-1
+                [&_hr]:border-border [&_hr]:my-2">
+                <ReactMarkdown>{draftBody}</ReactMarkdown>
+              </div>
             </div>
           )}
         </div>
@@ -322,9 +331,17 @@ function SentContent({ email }: { email: Email }) {
           )}
           {draft ? (
             <div className="max-h-52 overflow-y-auto rounded-lg bg-muted/30 px-3 py-2.5">
-              <pre className="text-sm whitespace-pre-wrap font-sans text-foreground/85 leading-relaxed">
-                {draft.edited_body ?? draft.body}
-              </pre>
+              <div className="text-sm text-foreground/85 leading-relaxed
+                [&_p]:mb-2 [&_p:last-child]:mb-0
+                [&_strong]:font-semibold [&_strong]:text-foreground
+                [&_ul]:my-1.5 [&_ul]:pl-4 [&_li]:my-0.5
+                [&_ol]:my-1.5 [&_ol]:pl-4
+                [&_h1]:text-sm [&_h1]:font-semibold [&_h1]:mb-1.5
+                [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:mb-1
+                [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mb-1
+                [&_hr]:border-border [&_hr]:my-2">
+                <ReactMarkdown>{draft.edited_body ?? draft.body}</ReactMarkdown>
+              </div>
             </div>
           ) : !isLoading ? (
             <p className="text-sm text-muted-foreground">Reply not found.</p>
