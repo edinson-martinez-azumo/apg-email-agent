@@ -114,6 +114,26 @@ function PendingContent({ email }: { email: Email }) {
   )
 }
 
+// ─── Confidence badge ─────────────────────────────────────────────────────────
+
+function ConfidenceBadge({ score }: { score: number | null }) {
+  if (score === null) return null
+  const high = score >= 4
+  const low = score <= 2
+  const label = high ? `Score ${score}/5 — High confidence` : low ? `Score ${score}/5 — Review carefully` : `Score ${score}/5`
+  const cls = high
+    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+    : low
+    ? 'bg-amber-50 text-amber-700 border-amber-200'
+    : 'bg-muted text-muted-foreground border-border'
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${cls}`}>
+      <span className={`h-1.5 w-1.5 rounded-full ${high ? 'bg-emerald-500' : low ? 'bg-amber-500' : 'bg-muted-foreground'}`} />
+      {label}
+    </span>
+  )
+}
+
 // ─── Draft ready / approved ───────────────────────────────────────────────────
 
 function DraftContent({ email }: { email: Email }) {
@@ -171,9 +191,12 @@ function DraftContent({ email }: { email: Email }) {
         </div>
 
         <div className="px-5 pt-4 pb-5">
-          <p className="text-xs font-semibold text-primary uppercase tracking-wider mb-3">
-            AI Draft Reply
-          </p>
+          <div className="flex items-center gap-2 mb-3">
+            <p className="text-xs font-semibold text-primary uppercase tracking-wider">
+              AI Draft Reply
+            </p>
+            {draft && <ConfidenceBadge score={draft.confidence_score} />}
+          </div>
           {isLoading && (
             <div className="space-y-2 animate-pulse">
               {[100, 80, 95, 70, 90].map((w, i) => (

@@ -26,6 +26,7 @@ export interface Draft {
   approved_at: string | null
   sent_at: string | null
   gmail_draft_id: string | null
+  confidence_score: number | null
   created_at: string
 }
 

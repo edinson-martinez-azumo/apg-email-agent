@@ -85,7 +85,7 @@ async def generate_draft_for_email(email_id: str, db: DB):
     query = f"{email.subject or ''} {email.body_text or ''}".strip()
     products = await search_products(query, db, top_k=8)
 
-    draft_body = ai_generate(email.subject or '', email.body_text or '', products)
+    draft_body, confidence_score = ai_generate(email.subject or '', email.body_text or '', products)
 
     result = await db.execute(select(Draft).where(Draft.email_id == email_id))
     existing = result.scalar_one_or_none()
@@ -93,6 +93,7 @@ async def generate_draft_for_email(email_id: str, db: DB):
     draft = existing or Draft(id=str(uuid.uuid4()), email_id=email_id)
     draft.body = draft_body
     draft.edited_body = None
+    draft.confidence_score = confidence_score
     db.add(draft)
 
     for p in products:
