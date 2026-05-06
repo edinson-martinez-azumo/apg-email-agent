@@ -84,7 +84,7 @@ async def discard_draft(draft_id: str, db: DB):
 
 @router.post('/{draft_id}/send')
 async def send_draft(draft_id: str, db: DB):
-    from app.services.gmail_service import send_reply
+    from app.services.gmail_service import send_reply, get_token
 
     draft = await db.get(Draft, draft_id)
     if not draft:
@@ -94,7 +94,8 @@ async def send_draft(draft_id: str, db: DB):
     if not email:
         raise HTTPException(status_code=404, detail='Email not found')
 
-    await send_reply(email.gmail_id, email.from_email, email.subject or '', body_to_send)
+    token_data = await get_token(db)
+    await send_reply(token_data, email.gmail_id, email.from_email, email.subject or '', body_to_send)
 
     draft.sent_at = datetime.datetime.now(datetime.timezone.utc)
     email.status = 'sent'

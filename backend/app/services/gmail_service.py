@@ -1,7 +1,6 @@
 import base64
 import datetime
 import json
-import os
 import re
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -9,8 +8,9 @@ from typing import Any
 
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
-
-TOKEN_FILE = os.path.join(os.path.dirname(__file__), '..', '..', 'gmail_token.json')
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from app.db.models.app_setting import AppSetting
 
 APG_BLUE = '#00A3E7'
 APG_BLUE_DARK = '#1276BD'
@@ -160,17 +160,21 @@ def _inline_md(text: str) -> str:
     return text
 
 
-def _get_service() -> Any:
-    if not os.path.exists(TOKEN_FILE):
-        raise RuntimeError('Gmail token not found. Complete OAuth flow at /api/v1/auth/gmail')
-    with open(TOKEN_FILE) as f:
-        token_data = json.load(f)
+async def get_token(db: AsyncSession) -> dict:
+    result = await db.execute(select(AppSetting).where(AppSetting.key == 'gmail_token'))
+    row = result.scalar_one_or_none()
+    if row is None:
+        raise RuntimeError('Gmail not connected. Complete OAuth flow at /api/v1/auth/gmail')
+    return json.loads(row.value)
+
+
+def _get_service(token_data: dict) -> Any:
     creds = Credentials.from_authorized_user_info(token_data)
     return build('gmail', 'v1', credentials=creds)
 
 
-def list_unread_messages(max_results: int = 20) -> list[dict[str, Any]]:
-    service = _get_service()
+def list_unread_messages(token_data: dict, max_results: int = 20) -> list[dict[str, Any]]:
+    service = _get_service(token_data)
     result = service.users().messages().list(
         userId='me',
         q='is:unread in:inbox',
@@ -179,8 +183,8 @@ def list_unread_messages(max_results: int = 20) -> list[dict[str, Any]]:
     return result.get('messages', [])
 
 
-def get_message(message_id: str) -> dict[str, Any]:
-    service = _get_service()
+def get_message(token_data: dict, message_id: str) -> dict[str, Any]:
+    service = _get_service(token_data)
     return service.users().messages().get(
         userId='me',
         id=message_id,
@@ -228,12 +232,13 @@ def _extract_body(payload: dict[str, Any]) -> str | None:
 
 
 async def send_reply(
+    token_data: dict,
     original_gmail_id: str,
     to_email: str,
     subject: str,
     body: str,
 ) -> None:
-    service = _get_service()
+    service = _get_service(token_data)
     original = service.users().messages().get(
         userId='me',
         id=original_gmail_id,

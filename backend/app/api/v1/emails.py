@@ -26,15 +26,16 @@ async def list_emails(db: DB, status: str | None = None, page: int = 1, size: in
 @router.post('/sync')
 async def sync_emails(db: DB):
     """Pull unread Gmail messages and save new ones to DB."""
-    from app.services.gmail_service import list_unread_messages, get_message, parse_message
+    from app.services.gmail_service import list_unread_messages, get_message, parse_message, get_token
     from sqlalchemy.exc import IntegrityError
 
-    messages = list_unread_messages(max_results=50)
+    token_data = await get_token(db)
+    messages = list_unread_messages(token_data, max_results=50)
     imported = 0
     skipped = 0
 
     for stub in messages:
-        msg = get_message(stub['id'])
+        msg = get_message(token_data, stub['id'])
         parsed = parse_message(msg)
 
         # Skip if already in DB

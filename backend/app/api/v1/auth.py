@@ -1,16 +1,15 @@
 import json
-import os
-from fastapi import APIRouter, HTTPException
+import secrets
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import RedirectResponse
 from google_auth_oauthlib.flow import Flow
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, delete
 from app.core.config import settings
+from app.core.deps import get_db
+from app.db.models.app_setting import AppSetting
 
 router = APIRouter()
-
-TOKEN_FILE = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'gmail_token.json')
-
-# Store flow between /gmail and /callback requests (keyed by OAuth state param)
-_pending_flows: dict[str, Flow] = {}
 
 CLIENT_CONFIG = {
     'web': {
@@ -23,29 +22,43 @@ CLIENT_CONFIG = {
 }
 
 
-@router.get('/gmail')
-async def gmail_auth():
-    flow = Flow.from_client_config(
+def _make_flow() -> Flow:
+    return Flow.from_client_config(
         CLIENT_CONFIG,
         scopes=settings.gmail_scopes.split(','),
         redirect_uri=settings.gmail_redirect_uri,
     )
-    auth_url, state = flow.authorization_url(
+
+
+@router.get('/gmail')
+async def gmail_auth(db: AsyncSession = Depends(get_db)):
+    state = secrets.token_urlsafe(32)
+
+    await db.merge(AppSetting(key=f'oauth_state:{state}', value='1'))
+    await db.commit()
+
+    flow = _make_flow()
+    auth_url, _ = flow.authorization_url(
         access_type='offline',
         include_granted_scopes='true',
         prompt='consent',
+        state=state,
     )
-    _pending_flows[state] = flow
     return RedirectResponse(auth_url)
 
 
 @router.get('/callback')
-async def gmail_callback(code: str, state: str):
-    flow = _pending_flows.pop(state, None)
-    if flow is None:
+async def gmail_callback(code: str, state: str, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(AppSetting).where(AppSetting.key == f'oauth_state:{state}')
+    )
+    row = result.scalar_one_or_none()
+    if row is None:
         raise HTTPException(status_code=400, detail='Invalid or expired OAuth state. Restart auth flow.')
 
-    os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+    await db.execute(delete(AppSetting).where(AppSetting.key == f'oauth_state:{state}'))
+
+    flow = _make_flow()
     flow.fetch_token(code=code)
 
     creds = flow.credentials
@@ -57,6 +70,16 @@ async def gmail_callback(code: str, state: str):
         'client_secret': creds.client_secret,
         'scopes': list(creds.scopes or []),
     }
-    with open(TOKEN_FILE, 'w') as f:
-        json.dump(token_data, f)
+    await db.merge(AppSetting(key='gmail_token', value=json.dumps(token_data)))
+    await db.commit()
+
     return {'status': 'authenticated', 'message': 'Gmail connected successfully'}
+
+
+@router.get('/status')
+async def auth_status(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(AppSetting).where(AppSetting.key == 'gmail_token')
+    )
+    row = result.scalar_one_or_none()
+    return {'connected': row is not None}
