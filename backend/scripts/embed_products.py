@@ -32,6 +32,8 @@ SLEEP_S = 8.0     # ~7.5 batches/min → ~94K tokens/min < 100K TPM trial limit
 
 async def run() -> None:
     df = _load_products()
+    df['title'] = df['title'].fillna('').astype(str).replace('nan', '')
+    df['search_text'] = df['search_text'].fillna('').astype(str)
     records = df[['sku', 'title', 'search_text']].drop_duplicates('sku').to_dict('records')
 
     engine = create_async_engine(settings.database_url, pool_size=1, max_overflow=0)

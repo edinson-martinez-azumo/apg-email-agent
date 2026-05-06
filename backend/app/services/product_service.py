@@ -24,7 +24,7 @@ def _load_products() -> pd.DataFrame:
     shopify = pd.read_excel(os.path.join(DATA_DIR, 'shopify.xlsx'))
     fishbowl = pd.read_excel(os.path.join(DATA_DIR, 'fishbowl.xlsx'))
 
-    shopify = shopify[shopify['Status'] == 'active'].copy()
+    shopify = shopify[shopify['Status'].isin(['active', 'archived']) | shopify['Status'].isna()].copy()
 
     sh_cols = {
         'Variant SKU': 'sku',
@@ -48,10 +48,13 @@ def _load_products() -> pd.DataFrame:
     }
     fishbowl = fishbowl[fishbowl['Active'] == True].rename(columns=fb_cols)[list(fb_cols.values())]  # noqa: E712
 
-    merged = shopify.merge(fishbowl, on='sku', how='left')
+    merged = shopify.merge(fishbowl, on='sku', how='outer')
+    merged['sku'] = merged['sku'].astype(str)
+    merged = merged[merged['sku'].str.startswith('APG', na=False) | merged['sku'].str.match(r'^[A-Za-z]', na=False)]
     merged['search_text'] = (
         merged[['sku', 'title', 'type', 'materials', 'tags', 'description']]
         .fillna('')
+        .astype(str)
         .agg(' '.join, axis=1)
         .str.lower()
     )
