@@ -1,0 +1,167 @@
+import { useState, useEffect } from 'react'
+import type { Email, Draft } from '@/types/api'
+
+interface DraftEditorProps {
+  email: Email
+  draft: Draft
+  onSave: (body: string) => void
+  onApproveAndSend: () => void
+  onRegenerate: () => void
+  onDiscard: () => void
+  isSaving: boolean
+  isSending: boolean
+  isRegenerating: boolean
+}
+
+export function DraftEditor({
+  email,
+  draft,
+  onSave,
+  onApproveAndSend,
+  onRegenerate,
+  onDiscard,
+  isSaving,
+  isSending,
+  isRegenerating,
+}: DraftEditorProps) {
+  const [body, setBody] = useState(draft.edited_body ?? draft.body)
+  const [saved, setSaved] = useState(false)
+  const [discardConfirm, setDiscardConfirm] = useState(false)
+
+  useEffect(() => {
+    setBody(draft.edited_body ?? draft.body)
+  }, [draft.id, draft.edited_body, draft.body])
+
+  const handleBlur = () => {
+    if (body !== (draft.edited_body ?? draft.body)) {
+      onSave(body)
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    }
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex flex-col lg:flex-row gap-4 flex-1 min-h-0">
+
+        {/* Original email */}
+        <div className="flex-1 flex flex-col rounded-xl border border-border overflow-hidden">
+          <div className="px-4 py-2.5 bg-muted/50 border-b border-border flex items-center gap-2">
+            <div className="h-2 w-2 rounded-full bg-muted-foreground/40" />
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Customer Email
+            </p>
+          </div>
+          <div className="flex-1 p-5 overflow-y-auto bg-card">
+            <div className="mb-4 pb-4 border-b border-border space-y-1">
+              <p className="text-sm">
+                <span className="font-medium text-muted-foreground">From: </span>
+                <span className="text-foreground">
+                  {email.from_name
+                    ? `${email.from_name} <${email.from_email}>`
+                    : email.from_email}
+                </span>
+              </p>
+              <p className="text-sm">
+                <span className="font-medium text-muted-foreground">Subject: </span>
+                <span className="text-foreground">{email.subject ?? '(no subject)'}</span>
+              </p>
+            </div>
+            <pre className="text-sm whitespace-pre-wrap font-sans text-foreground/90 leading-relaxed">
+              {email.body_text ?? '(no body)'}
+            </pre>
+          </div>
+        </div>
+
+        {/* Draft reply */}
+        <div className="flex-1 flex flex-col rounded-xl border border-primary/40 overflow-hidden">
+          <div className="px-4 py-2.5 bg-primary/5 border-b border-primary/20 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="h-2 w-2 rounded-full bg-primary" />
+              <p className="text-xs font-semibold text-primary uppercase tracking-wider">
+                AI Draft Reply
+              </p>
+            </div>
+            <div className="flex items-center gap-1.5">
+              {isSaving && (
+                <span className="text-xs text-muted-foreground flex items-center gap-1">
+                  <span className="h-2.5 w-2.5 rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground animate-spin" />
+                  Saving…
+                </span>
+              )}
+              {saved && !isSaving && (
+                <span className="text-xs text-primary">Saved ✓</span>
+              )}
+            </div>
+          </div>
+          <label htmlFor="draft-reply" className="sr-only">AI Draft Reply</label>
+          <textarea
+            id="draft-reply"
+            className="flex-1 p-5 text-sm font-sans resize-none focus:outline-none bg-card text-foreground/90 leading-relaxed placeholder:text-muted-foreground"
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            onBlur={handleBlur}
+            placeholder="AI-generated draft will appear here…"
+          />
+        </div>
+      </div>
+
+      {/* Action bar */}
+      <div className="sticky bottom-0 mt-4 flex items-center justify-between border-t border-border bg-background pt-4 pb-2">
+        <div className="flex gap-2">
+          {discardConfirm ? (
+            <>
+              <button
+                onClick={() => setDiscardConfirm(false)}
+                className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-muted active:scale-95 transition-colors duration-150 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => { setDiscardConfirm(false); onDiscard() }}
+                className="rounded-lg border border-destructive bg-destructive/5 px-4 py-2 text-sm font-medium text-destructive hover:bg-destructive hover:text-white active:scale-95 transition-colors duration-150 cursor-pointer"
+              >
+                Confirm discard
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => setDiscardConfirm(true)}
+              className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-muted-foreground hover:border-destructive hover:text-destructive active:scale-95 transition-colors duration-150 cursor-pointer"
+            >
+              Discard
+            </button>
+          )}
+          <button
+            onClick={onRegenerate}
+            disabled={isRegenerating}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-muted active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-150 cursor-pointer"
+          >
+            {isRegenerating ? (
+              <>
+                <span className="h-3.5 w-3.5 rounded-full border-2 border-foreground/30 border-t-foreground animate-spin" />
+                Regenerating…
+              </>
+            ) : (
+              '↺ Regenerate'
+            )}
+          </button>
+        </div>
+        <button
+          onClick={onApproveAndSend}
+          disabled={isSending}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-6 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity duration-150 cursor-pointer shadow-sm"
+        >
+          {isSending ? (
+            <>
+              <span className="h-3.5 w-3.5 rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground animate-spin" />
+              Sending…
+            </>
+          ) : (
+            '✉ Approve & Send'
+          )}
+        </button>
+      </div>
+    </div>
+  )
+}

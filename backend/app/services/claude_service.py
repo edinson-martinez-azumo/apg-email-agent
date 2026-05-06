@@ -1,0 +1,100 @@
+import re
+import anthropic
+from app.core.config import settings
+
+client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+
+SYSTEM_PROMPT = """You are a helpful sales assistant for APackaging Group (APG),
+a leading manufacturer of cosmetic and personal care packaging (bottles, pumps,
+tubes, jars, sprayers, and more) based in Azusa, California.
+
+Your job is to draft professional, concise email replies to customer inquiries.
+
+Guidelines:
+- Be warm, professional, and solutions-oriented
+- Reference specific APG product SKUs and specs when relevant
+- Include MOQ and tier pricing if the customer asks about quantities or cost
+- If the customer's inquiry doesn't match any product clearly, acknowledge their
+  need and invite them to share more details
+- Write in the same language as the customer's email (English or Spanish)
+- Sign off as: APG Sales Team | APackaging Group | apackaginggroup.com
+- Never invent products, prices, or specs not provided in the context
+- Output ONLY the email body — no preamble, no "Here is...", no "---" separators, no commentary
+"""
+
+
+def _fmt_price(val: object) -> str:
+    if val is None or str(val).strip() in ('', 'nan', 'None'):
+        return ''
+    try:
+        return f'${float(val):.4g}'
+    except (TypeError, ValueError):
+        return ''
+
+
+def _build_product_context(products: list[dict]) -> str:
+    if not products:
+        return "No specific product matches found — respond generally about APG's catalog."
+
+    blocks = []
+    for p in products:
+        stock = ' [IN STOCK]' if p.get('in_stock') else ''
+        lines = [
+            f"SKU: {p['sku']}{stock}",
+            f"Name: {p['title']}",
+        ]
+        if p.get('materials'):
+            lines.append(f"Material: {p['materials']}")
+        if p.get('capacities'):
+            lines.append(f"Available sizes: {p['capacities']}")
+        moq = p.get('moq') or ''
+        lines.append(f"MOQ: {moq}")
+
+        tiers = [
+            ('10k', _fmt_price(p.get('price_10k'))),
+            ('25k', _fmt_price(p.get('price_25k'))),
+            ('50k', _fmt_price(p.get('price_50k'))),
+            ('100k', _fmt_price(p.get('price_100k'))),
+        ]
+        tier_str = ' | '.join(f'@{qty} {price}' for qty, price in tiers if price)
+        if tier_str:
+            lines.append(f"Pricing: {tier_str}")
+        else:
+            lines.append("Pricing: available upon request")
+
+        blocks.append('\n'.join(lines))
+
+    return "Relevant APG products:\n\n" + "\n\n".join(blocks)
+
+
+def generate_draft(email_subject: str, email_body: str, products: list[dict]) -> str:
+    """
+    Generate a reply draft given pre-fetched products.
+    Returns draft_body string.
+    """
+    product_context = _build_product_context(products)
+
+    user_message = f"""Customer email:
+Subject: {email_subject}
+---
+{email_body}
+
+---
+{product_context}
+
+Please write a professional reply email body (no subject line needed)."""
+
+    response = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=1000,
+        system=SYSTEM_PROMPT,
+        messages=[{"role": "user", "content": user_message}],
+    )
+
+    return _strip_preamble(response.content[0].text)
+
+
+def _strip_preamble(text: str) -> str:
+    text = re.sub(r'^(?:here is [^\n]*[:]\s*\n+|---\s*\n+)+', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'\n+---\s*$', '', text)
+    return text.strip()

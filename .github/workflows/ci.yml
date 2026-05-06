@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:    { branches: [main] }
+  pull_request: { branches: [main] }
+
+jobs:
+  backend-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with: { version: "0.x" }
+      - run: cd backend && uv sync --extra dev
+      - run: cd backend && uv run ruff check .
+
+  backend-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: apg_testdb
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with: { version: "0.x" }
+      - run: cd backend && uv sync --extra dev
+      - run: cd backend && uv run alembic upgrade head
+      - run: cd backend && uv run pytest tests/ -v
+        env:
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/apg_testdb
+          ANTHROPIC_API_KEY: sk-ant-test-key
+          GMAIL_CLIENT_ID: test
+          GMAIL_CLIENT_SECRET: test
+          GMAIL_REDIRECT_URI: http://localhost/callback
+
+  frontend-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v3
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: pnpm }
+      - run: cd frontend && pnpm install --frozen-lockfile
+      - run: cd frontend && pnpm tsc --noEmit

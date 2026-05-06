@@ -1,0 +1,24 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "backend/api/index.py",
+      "use": "@vercel/python"
+    },
+    {
+      "src": "frontend/package.json",
+      "use": "@vercel/static-build",
+      "config": { "distDir": "dist" }
+    }
+  ],
+  "routes": [
+    { "src": "/api/(.*)", "dest": "backend/api/index.py" },
+    { "src": "/(.*)",     "dest": "frontend/$1" }
+  ],
+  "crons": [
+    {
+      "path": "/api/v1/cron/poll-gmail",
+      "schedule": "*/5 * * * *"
+    }
+  ]
+}

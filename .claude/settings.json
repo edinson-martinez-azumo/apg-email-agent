@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv:*)",
+      "Bash(pnpm:*)",
+      "Bash(docker:*)",
+      "Bash(make:*)",
+      "Bash(git:*)"
+    ]
+  }
+}
