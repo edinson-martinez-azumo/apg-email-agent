@@ -21,28 +21,35 @@ function applyFormat(
   const end = textarea.selectionEnd
   const selected = value.slice(start, end)
 
+  // Toggle off: if selection already wrapped, unwrap
+  if (!action.block && selected.startsWith(action.prefix) && selected.endsWith(action.suffix)) {
+    const unwrapped = selected.slice(action.prefix.length, selected.length - action.suffix.length)
+    onChange(value.slice(0, start) + unwrapped + value.slice(end))
+    requestAnimationFrame(() => {
+      textarea.focus()
+      textarea.setSelectionRange(start, start + unwrapped.length)
+    })
+    return
+  }
+
   let insert: string
-  let cursorOffset: number
+  let selStart: number
+  let selEnd: number
 
   if (action.block) {
     insert = action.prefix + (selected || '')
-    cursorOffset = start + insert.length
+    selStart = selEnd = start + insert.length
   } else {
-    insert = action.prefix + (selected || 'text') + action.suffix
-    cursorOffset = selected ? start + insert.length : start + action.prefix.length
+    const inner = selected || 'text'
+    insert = action.prefix + inner + action.suffix
+    selStart = selected ? start : start + action.prefix.length
+    selEnd = selected ? start + insert.length : selStart + inner.length
   }
 
-  const next = value.slice(0, start) + insert + value.slice(end)
-  onChange(next)
-
+  onChange(value.slice(0, start) + insert + value.slice(end))
   requestAnimationFrame(() => {
     textarea.focus()
-    const sel = selected ? start + insert.length : cursorOffset
-    textarea.setSelectionRange(
-      selected ? start : cursorOffset,
-      selected ? start + insert.length : cursorOffset + (action.block ? 0 : 4),
-    )
-    void sel
+    textarea.setSelectionRange(selStart, selEnd)
   })
 }
 
