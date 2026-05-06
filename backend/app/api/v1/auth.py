@@ -23,11 +23,14 @@ CLIENT_CONFIG = {
 
 
 def _make_flow() -> Flow:
-    return Flow.from_client_config(
+    flow = Flow.from_client_config(
         CLIENT_CONFIG,
         scopes=settings.gmail_scopes.split(','),
         redirect_uri=settings.gmail_redirect_uri,
     )
+    # Disable PKCE — server-side flow with client_secret doesn't need it
+    flow.oauth2session._client.code_challenge_method = None
+    return flow
 
 
 @router.get('/gmail')
@@ -42,9 +45,7 @@ async def gmail_auth(db: AsyncSession = Depends(get_db)):
         state=state,
     )
 
-    # Persist code_verifier so PKCE survives across serverless instances
-    code_verifier = getattr(flow.oauth2session, '_code_verifier', '') or ''
-    await db.merge(AppSetting(key=f'oauth_state:{state}', value=code_verifier))
+    await db.merge(AppSetting(key=f'oauth_state:{state}', value='1'))
     await db.commit()
 
     return RedirectResponse(auth_url)
@@ -59,15 +60,11 @@ async def gmail_callback(code: str, state: str, db: AsyncSession = Depends(get_d
     if row is None:
         raise HTTPException(status_code=400, detail='Invalid or expired OAuth state. Restart auth flow.')
 
-    code_verifier = row.value
     await db.execute(delete(AppSetting).where(AppSetting.key == f'oauth_state:{state}'))
 
     flow = _make_flow()
     try:
-        fetch_kwargs = {'code': code}
-        if code_verifier:
-            fetch_kwargs['code_verifier'] = code_verifier
-        flow.fetch_token(**fetch_kwargs)
+        flow.fetch_token(code=code)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f'fetch_token failed: {exc}')
 
