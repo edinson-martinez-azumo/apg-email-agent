@@ -1,59 +1,7 @@
-import { useState, useEffect, useRef } from 'react'
-import ReactMarkdown from 'react-markdown'
+import { useState, useEffect } from 'react'
+import MDEditor from '@uiw/react-md-editor'
+import '@uiw/react-md-editor/markdown-editor.css'
 import type { Email, Draft } from '@/types/api'
-
-type ToolbarAction = { label: string; title: string; prefix: string; suffix: string; block?: boolean }
-
-const TOOLBAR: ToolbarAction[] = [
-  { label: 'B',  title: 'Bold',        prefix: '**', suffix: '**' },
-  { label: 'I',  title: 'Italic',      prefix: '*',  suffix: '*'  },
-  { label: '—',  title: 'Separator',   prefix: '\n---\n', suffix: '', block: true },
-  { label: '• ', title: 'Bullet list', prefix: '- ', suffix: '', block: true },
-]
-
-function applyFormat(
-  textarea: HTMLTextAreaElement,
-  action: ToolbarAction,
-  value: string,
-  onChange: (v: string) => void,
-) {
-  const start = textarea.selectionStart
-  const end = textarea.selectionEnd
-  const selected = value.slice(start, end)
-
-  // Toggle off: if selection already wrapped, unwrap
-  if (!action.block && selected.startsWith(action.prefix) && selected.endsWith(action.suffix)) {
-    const unwrapped = selected.slice(action.prefix.length, selected.length - action.suffix.length)
-    onChange(value.slice(0, start) + unwrapped + value.slice(end))
-    requestAnimationFrame(() => {
-      textarea.focus()
-      textarea.setSelectionRange(start, start + unwrapped.length)
-    })
-    return
-  }
-
-  let insert: string
-  let selStart: number
-  let selEnd: number
-
-  if (action.block) {
-    const needsNewline = start > 0 && value[start - 1] !== '\n'
-    const pre = needsNewline ? '\n' : ''
-    insert = pre + action.prefix + (selected || '')
-    selStart = selEnd = start + insert.length
-  } else {
-    const inner = selected || 'text'
-    insert = action.prefix + inner + action.suffix
-    selStart = selected ? start : start + action.prefix.length
-    selEnd = selected ? start + insert.length : selStart + inner.length
-  }
-
-  onChange(value.slice(0, start) + insert + value.slice(end))
-  requestAnimationFrame(() => {
-    textarea.focus()
-    textarea.setSelectionRange(selStart, selEnd)
-  })
-}
 
 interface DraftEditorProps {
   email: Email
@@ -81,8 +29,6 @@ export function DraftEditor({
   const [body, setBody] = useState(draft.edited_body ?? draft.body)
   const [saved, setSaved] = useState(false)
   const [discardConfirm, setDiscardConfirm] = useState(false)
-  const [mobileTab, setMobileTab] = useState<'edit' | 'preview'>('edit')
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
     setBody(draft.edited_body ?? draft.body)
@@ -127,7 +73,7 @@ export function DraftEditor({
           </div>
         </div>
 
-        {/* Draft split: edit + preview — right 68% */}
+        {/* MD Editor — right 68% */}
         <div className="lg:w-[68%] flex flex-col rounded-xl border border-primary/40 overflow-hidden">
 
           {/* Header */}
@@ -144,81 +90,19 @@ export function DraftEditor({
                 </span>
               )}
               {saved && !isSaving && <span className="text-xs text-primary">Saved ✓</span>}
-              {/* Mobile tabs */}
-              <div className="flex lg:hidden rounded-lg border border-border overflow-hidden text-xs">
-                <button
-                  onClick={() => setMobileTab('edit')}
-                  className={`px-3 py-1 font-medium transition-colors cursor-pointer ${mobileTab === 'edit' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-                >
-                  Edit
-                </button>
-                <button
-                  onClick={() => setMobileTab('preview')}
-                  className={`px-3 py-1 font-medium transition-colors cursor-pointer ${mobileTab === 'preview' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-                >
-                  Preview
-                </button>
-              </div>
             </div>
           </div>
 
-          {/* Split panels */}
-          <div className="flex flex-1 min-h-0 divide-x divide-border">
-
-            {/* Markdown textarea */}
-            <div className={`flex flex-col min-h-0 ${mobileTab === 'preview' ? 'hidden lg:flex' : 'flex'} lg:w-1/2 w-full`}>
-              <div className="px-3 py-1.5 bg-muted/30 border-b border-border shrink-0 flex items-center justify-between gap-2">
-                <span className="text-xs text-muted-foreground font-medium">Edit</span>
-                <div className="flex items-center gap-0.5">
-                  {TOOLBAR.map((action) => (
-                    <button
-                      key={action.title}
-                      title={action.title}
-                      type="button"
-                      onMouseDown={(e) => {
-                        e.preventDefault()
-                        if (textareaRef.current) applyFormat(textareaRef.current, action, body, setBody)
-                      }}
-                      className="px-2 py-0.5 text-xs font-medium rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer select-none"
-                    >
-                      {action.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <label htmlFor="draft-reply" className="sr-only">Edit draft</label>
-              <textarea
-                ref={textareaRef}
-                id="draft-reply"
-                className="flex-1 p-4 text-sm font-mono resize-none focus:outline-none bg-card text-foreground/90 leading-relaxed placeholder:text-muted-foreground"
-                value={body}
-                onChange={(e) => setBody(e.target.value)}
-                onBlur={handleBlur}
-                placeholder="AI-generated draft will appear here…"
-              />
-            </div>
-
-            {/* Rendered preview */}
-            <div className={`flex flex-col min-h-0 ${mobileTab === 'edit' ? 'hidden lg:flex' : 'flex'} lg:w-1/2 w-full`}>
-              <div className="px-3 py-1.5 bg-muted/30 border-b border-border shrink-0">
-                <span className="text-xs text-muted-foreground font-medium">Preview</span>
-              </div>
-              <div className="flex-1 p-4 overflow-y-auto bg-card">
-                <div className="prose prose-sm max-w-none text-foreground/90 leading-relaxed
-                  [&_p]:mb-3 [&_p:last-child]:mb-0
-                  [&_strong]:text-foreground [&_strong]:font-semibold
-                  [&_ul]:my-2 [&_ul]:pl-5 [&_ul]:list-disc [&_li]:my-0.5
-                  [&_ol]:my-2 [&_ol]:pl-5 [&_ol]:list-decimal
-                  [&_h1]:text-base [&_h1]:font-semibold [&_h1]:mb-2 [&_h1]:text-foreground
-                  [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:mb-1.5 [&_h2]:text-foreground
-                  [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mb-1 [&_h3]:text-foreground
-                  [&_hr]:border-border [&_hr]:my-3
-                  [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground
-                ">
-                  <ReactMarkdown>{body || '*No content yet*'}</ReactMarkdown>
-                </div>
-              </div>
-            </div>
+          {/* Editor */}
+          <div className="flex-1 min-h-0" onBlur={handleBlur} data-color-mode="light">
+            <MDEditor
+              value={body}
+              onChange={(v) => setBody(v ?? '')}
+              preview="live"
+              height="100%"
+              style={{ height: '100%' }}
+              visibleDragbar={false}
+            />
           </div>
         </div>
       </div>
