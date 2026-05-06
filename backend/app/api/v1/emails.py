@@ -17,7 +17,10 @@ async def list_emails(db: DB, status: str | None = None, page: int = 1, size: in
     q = select(Email).order_by(Email.received_at.desc())
     if status:
         q = q.where(Email.status == status)
-    total = await db.scalar(select(func.count()).select_from(Email))
+    count_q = select(func.count()).select_from(Email)
+    if status:
+        count_q = count_q.where(Email.status == status)
+    total = await db.scalar(count_q)
     result = await db.execute(q.offset((page - 1) * size).limit(size))
     emails = result.scalars().all()
     return {'items': emails, 'total': total or 0, 'page': page, 'size': size}
