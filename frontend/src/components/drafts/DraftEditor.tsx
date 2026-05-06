@@ -1,6 +1,50 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 import type { Email, Draft } from '@/types/api'
+
+type ToolbarAction = { label: string; title: string; prefix: string; suffix: string; block?: boolean }
+
+const TOOLBAR: ToolbarAction[] = [
+  { label: 'B',  title: 'Bold',        prefix: '**', suffix: '**' },
+  { label: 'I',  title: 'Italic',      prefix: '*',  suffix: '*'  },
+  { label: '—',  title: 'Separator',   prefix: '\n---\n', suffix: '', block: true },
+  { label: '• ', title: 'Bullet list', prefix: '- ', suffix: '', block: true },
+]
+
+function applyFormat(
+  textarea: HTMLTextAreaElement,
+  action: ToolbarAction,
+  value: string,
+  onChange: (v: string) => void,
+) {
+  const start = textarea.selectionStart
+  const end = textarea.selectionEnd
+  const selected = value.slice(start, end)
+
+  let insert: string
+  let cursorOffset: number
+
+  if (action.block) {
+    insert = action.prefix + (selected || '')
+    cursorOffset = start + insert.length
+  } else {
+    insert = action.prefix + (selected || 'text') + action.suffix
+    cursorOffset = selected ? start + insert.length : start + action.prefix.length
+  }
+
+  const next = value.slice(0, start) + insert + value.slice(end)
+  onChange(next)
+
+  requestAnimationFrame(() => {
+    textarea.focus()
+    const sel = selected ? start + insert.length : cursorOffset
+    textarea.setSelectionRange(
+      selected ? start : cursorOffset,
+      selected ? start + insert.length : cursorOffset + (action.block ? 0 : 4),
+    )
+    void sel
+  })
+}
 
 interface DraftEditorProps {
   email: Email
@@ -29,6 +73,7 @@ export function DraftEditor({
   const [saved, setSaved] = useState(false)
   const [discardConfirm, setDiscardConfirm] = useState(false)
   const [mobileTab, setMobileTab] = useState<'edit' | 'preview'>('edit')
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
     setBody(draft.edited_body ?? draft.body)
@@ -113,11 +158,28 @@ export function DraftEditor({
 
             {/* Markdown textarea */}
             <div className={`flex flex-col min-h-0 ${mobileTab === 'preview' ? 'hidden lg:flex' : 'flex'} lg:w-1/2 w-full`}>
-              <div className="px-3 py-1.5 bg-muted/30 border-b border-border shrink-0">
-                <span className="text-xs text-muted-foreground font-medium">Markdown</span>
+              <div className="px-3 py-1.5 bg-muted/30 border-b border-border shrink-0 flex items-center justify-between gap-2">
+                <span className="text-xs text-muted-foreground font-medium">Edit</span>
+                <div className="flex items-center gap-0.5">
+                  {TOOLBAR.map((action) => (
+                    <button
+                      key={action.title}
+                      title={action.title}
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault()
+                        if (textareaRef.current) applyFormat(textareaRef.current, action, body, setBody)
+                      }}
+                      className="px-2 py-0.5 text-xs font-medium rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer select-none"
+                    >
+                      {action.label}
+                    </button>
+                  ))}
+                </div>
               </div>
               <label htmlFor="draft-reply" className="sr-only">Edit draft</label>
               <textarea
+                ref={textareaRef}
                 id="draft-reply"
                 className="flex-1 p-4 text-sm font-mono resize-none focus:outline-none bg-card text-foreground/90 leading-relaxed placeholder:text-muted-foreground"
                 value={body}
