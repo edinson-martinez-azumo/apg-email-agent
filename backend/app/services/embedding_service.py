@@ -1,10 +1,8 @@
 import anthropic
 import cohere
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, text
+from sqlalchemy import text
 from app.core.config import settings
-from app.db.models.product_embedding import ProductEmbedding
-from app.services.product_service import _load_products
 
 EMBED_MODEL = 'embed-english-light-v3.0'
 EMBED_DIMS = 384
@@ -41,7 +39,6 @@ def _get_anthropic() -> anthropic.Anthropic:
 
 
 def _enrich_query(raw_query: str) -> str:
-    """Fast Haiku call: extract catalog-style terms to append to the embedding query."""
     response = _get_anthropic().messages.create(
         model='claude-haiku-4-5-20251001',
         max_tokens=80,
@@ -63,44 +60,83 @@ async def embed(text_input: str) -> list[float]:
 
 async def search_products(query: str, db: AsyncSession, top_k: int = 8) -> list[dict]:
     """
-    Cosine similarity search over product_embeddings.
-    Enriches the query with Haiku-extracted catalog terms before embedding.
-    Falls back to keyword search if the table is empty.
+    Hybrid search: cosine similarity (0.7) + full-text ts_rank (0.3).
+    Falls back to keyword search if product_embeddings is empty.
     """
     count = await db.scalar(text('SELECT COUNT(*) FROM product_embeddings'))
     if not count:
         from app.services.product_service import search as keyword_search
         return keyword_search(query, top_k=top_k)
 
+    # Check if metadata columns are populated (post-migration 0010)
+    has_metadata = await db.scalar(
+        text("SELECT COUNT(*) FROM product_embeddings WHERE price_10k IS NOT NULL LIMIT 1")
+    )
+
     enriched = _enrich_query(query)
     query_embedding = await embed(enriched)
 
-    result = await db.execute(
-        select(ProductEmbedding)
-        .order_by(ProductEmbedding.embedding.cosine_distance(query_embedding))
-        .limit(top_k)
-    )
-    rows = result.scalars().all()
+    if has_metadata:
+        sql = text("""
+            SELECT
+                sku, title, type, materials, moq, capacities,
+                price_base, price_10k, price_25k, price_50k, price_100k, in_stock,
+                (0.7 * (1 - (embedding <=> CAST(:vec AS vector))) +
+                 0.3 * ts_rank(search_vector_ts, plainto_tsquery('english', :q))) AS score
+            FROM product_embeddings
+            ORDER BY score DESC
+            LIMIT :k
+        """)
+        result = await db.execute(sql, {'vec': str(query_embedding), 'q': query, 'k': top_k})
+        rows = result.mappings().all()
+        return [
+            {
+                'sku': r['sku'],
+                'title': r['title'] or '',
+                'type': r['type'] or '',
+                'materials': r['materials'] or '',
+                'moq': r['moq'] or '',
+                'capacities': r['capacities'] or '',
+                'in_stock': bool(r['in_stock']),
+                'price_base': r['price_base'] or '',
+                'price_10k': r['price_10k'] or '',
+                'price_25k': r['price_25k'] or '',
+                'price_50k': r['price_50k'] or '',
+                'price_100k': r['price_100k'] or '',
+            }
+            for r in rows
+        ]
+    else:
+        # Pre-migration fallback: cosine only + DataFrame merge
+        from sqlalchemy import select as sa_select
+        from app.db.models.product_embedding import ProductEmbedding
+        from app.services.product_service import _load_products
 
-    df = _load_products()
-    out = []
-    for row in rows:
-        match = df[df['sku'] == row.sku]
-        if match.empty:
-            continue
-        r = match.iloc[0]
-        out.append({
-            'sku': row.sku,
-            'title': row.title or '',
-            'type': str(r.get('type', '')),
-            'materials': str(r.get('materials', '')),
-            'moq': r.get('moq') or r.get('fb_moq', ''),
-            'capacities': r.get('capacities', ''),
-            'in_stock': bool(r.get('in_stock', False)),
-            'price_base': r.get('price', ''),
-            'price_10k': r.get('price_10k', ''),
-            'price_25k': r.get('price_25k', ''),
-            'price_50k': r.get('price_50k', ''),
-            'price_100k': r.get('price_100k', ''),
-        })
-    return out
+        result = await db.execute(
+            sa_select(ProductEmbedding)
+            .order_by(ProductEmbedding.embedding.cosine_distance(query_embedding))
+            .limit(top_k)
+        )
+        rows = result.scalars().all()
+        df = _load_products()
+        out = []
+        for row in rows:
+            match = df[df['sku'] == row.sku]
+            if match.empty:
+                continue
+            r = match.iloc[0]
+            out.append({
+                'sku': row.sku,
+                'title': row.title or '',
+                'type': str(r.get('type', '')),
+                'materials': str(r.get('materials', '')),
+                'moq': r.get('moq') or r.get('fb_moq', ''),
+                'capacities': r.get('capacities', ''),
+                'in_stock': bool(r.get('in_stock', False)),
+                'price_base': r.get('price', ''),
+                'price_10k': r.get('price_10k', ''),
+                'price_25k': r.get('price_25k', ''),
+                'price_50k': r.get('price_50k', ''),
+                'price_100k': r.get('price_100k', ''),
+            })
+        return out
