@@ -1,3 +1,5 @@
+import base64
+import hashlib
 import json
 import secrets
 from fastapi import APIRouter, Depends, HTTPException
@@ -23,29 +25,39 @@ CLIENT_CONFIG = {
 
 
 def _make_flow() -> Flow:
-    flow = Flow.from_client_config(
+    return Flow.from_client_config(
         CLIENT_CONFIG,
         scopes=settings.gmail_scopes.split(','),
         redirect_uri=settings.gmail_redirect_uri,
     )
-    # Disable PKCE — server-side flow with client_secret doesn't need it
-    flow.oauth2session._client.code_challenge_method = None
-    return flow
+
+
+def _pkce_pair() -> tuple[str, str]:
+    verifier = secrets.token_urlsafe(96)[:128]
+    challenge = base64.urlsafe_b64encode(
+        hashlib.sha256(verifier.encode()).digest()
+    ).rstrip(b'=').decode()
+    return verifier, challenge
 
 
 @router.get('/gmail')
 async def gmail_auth(db: AsyncSession = Depends(get_db)):
     state = secrets.token_urlsafe(32)
+    code_verifier, code_challenge = _pkce_pair()
 
     flow = _make_flow()
+    # Suppress any auto-generated PKCE so ours takes precedence
+    flow.oauth2session._client.code_challenge_method = None
     auth_url, _ = flow.authorization_url(
         access_type='offline',
         include_granted_scopes='true',
         prompt='consent',
         state=state,
+        code_challenge=code_challenge,
+        code_challenge_method='S256',
     )
 
-    await db.merge(AppSetting(key=f'oauth_state:{state}', value='1'))
+    await db.merge(AppSetting(key=f'oauth_state:{state}', value=code_verifier))
     await db.commit()
 
     return RedirectResponse(auth_url)
@@ -60,11 +72,13 @@ async def gmail_callback(code: str, state: str, db: AsyncSession = Depends(get_d
     if row is None:
         raise HTTPException(status_code=400, detail='Invalid or expired OAuth state. Restart auth flow.')
 
+    code_verifier = row.value
     await db.execute(delete(AppSetting).where(AppSetting.key == f'oauth_state:{state}'))
 
     flow = _make_flow()
+    flow.oauth2session._client.code_challenge_method = None
     try:
-        flow.fetch_token(code=code)
+        flow.fetch_token(code=code, code_verifier=code_verifier)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f'fetch_token failed: {exc}')
 
