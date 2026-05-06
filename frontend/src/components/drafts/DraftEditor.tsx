@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import MDEditor from '@uiw/react-md-editor'
+import MDEditor, { commands } from '@uiw/react-md-editor'
 import '@uiw/react-md-editor/markdown-editor.css'
 import type { Email, Draft } from '@/types/api'
 
@@ -102,6 +102,19 @@ export function DraftEditor({
               height="100%"
               style={{ height: '100%' }}
               visibleDragbar={false}
+              commands={[
+                commands.bold,
+                commands.italic,
+                commands.divider,
+                commands.unorderedListCommand,
+                commands.orderedListCommand,
+                commands.divider,
+                commands.hr,
+                commands.link,
+              ]}
+              extraCommands={[
+                commands.fullscreen,
+              ]}
             />
           </div>
         </div>
