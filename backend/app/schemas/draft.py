@@ -11,6 +11,7 @@ class DraftRead(BaseModel):
     approved_at: datetime | None
     sent_at: datetime | None
     gmail_draft_id: str | None
+    confidence_score: int | None
     created_at: datetime
 
     model_config = {'from_attributes': True}

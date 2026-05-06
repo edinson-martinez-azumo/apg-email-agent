@@ -117,7 +117,7 @@ function PendingContent({ email }: { email: Email }) {
 // ─── Confidence badge ─────────────────────────────────────────────────────────
 
 function ConfidenceBadge({ score }: { score: number | null }) {
-  if (score === null) return null
+  if (score == null) return null
   const high = score >= 4
   const low = score <= 2
   const label = high ? `Score ${score}/5 — High confidence` : low ? `Score ${score}/5 — Review carefully` : `Score ${score}/5`
