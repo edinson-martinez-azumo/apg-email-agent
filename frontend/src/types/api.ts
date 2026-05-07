@@ -1,4 +1,4 @@
-export interface Email {
+export interface ThreadEmail {
   id: string
   gmail_id: string
   from_email: string
@@ -6,8 +6,20 @@ export interface Email {
   subject: string | null
   body_text: string | null
   received_at: string
+}
+
+export interface Email {
+  id: string
+  gmail_id: string
+  thread_id: string | null
+  from_email: string
+  from_name: string | null
+  subject: string | null
+  body_text: string | null
+  received_at: string
   status: 'pending' | 'draft_ready' | 'approved' | 'sent' | 'discarded'
   created_at: string
+  thread: ThreadEmail[]
 }
 
 export interface EmailListResponse {

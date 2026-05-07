@@ -76,18 +76,37 @@ def _build_product_context(products: list[dict]) -> str:
     return "Relevant APG products:\n\n" + "\n\n".join(blocks)
 
 
-def generate_draft(email_subject: str, email_body: str, products: list[dict]) -> tuple[str, float]:
+def _build_thread_context(thread_history: list) -> str:
+    if not thread_history:
+        return ''
+    lines = ['Previous emails in this thread (oldest first):']
+    for msg in thread_history:
+        sender = msg.from_name or msg.from_email
+        lines.append(f"\n--- From: {sender} <{msg.from_email}> ---")
+        lines.append(msg.body_text or '(no body)')
+    return '\n'.join(lines)
+
+
+def generate_draft(
+    email_subject: str,
+    email_body: str,
+    products: list[dict],
+    thread_history: list | None = None,
+) -> tuple[str, float]:
     """
-    Generate a reply draft given pre-fetched products.
+    Generate a reply draft given pre-fetched products and optional thread history.
     Returns (draft_body, confidence_score 1-5).
     """
     product_context = _build_product_context(products)
+    thread_context = _build_thread_context(thread_history or [])
+
+    thread_section = f"\n\n{thread_context}\n" if thread_context else ''
 
     user_message = f"""Customer email:
 Subject: {email_subject}
 ---
 {email_body}
-
+{thread_section}
 ---
 {product_context}
 

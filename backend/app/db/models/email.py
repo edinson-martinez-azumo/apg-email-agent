@@ -8,6 +8,7 @@ class Email(Base):
 
     id:           Mapped[str]        = mapped_column(String(36), primary_key=True)
     gmail_id:     Mapped[str]        = mapped_column(String(255), unique=True)
+    thread_id:    Mapped[str | None] = mapped_column(String(255), index=True)
     from_email:   Mapped[str]        = mapped_column(String(255))
     from_name:    Mapped[str | None] = mapped_column(String(255))
     subject:      Mapped[str | None] = mapped_column(String(500))

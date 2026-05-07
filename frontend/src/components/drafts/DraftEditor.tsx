@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import MDEditor, { commands } from '@uiw/react-md-editor'
 import '@uiw/react-md-editor/markdown-editor.css'
-import type { Email, Draft } from '@/types/api'
+import type { Email, Draft, ThreadEmail } from '@/types/api'
 
 interface DraftEditorProps {
   email: Email
@@ -45,30 +45,55 @@ export function DraftEditor({
   return (
     <div className="flex flex-col h-full gap-4">
 
-        {/* Customer email — top */}
+        {/* Customer email + thread — top */}
         <div className="flex flex-col rounded-xl border border-border overflow-hidden shrink-0">
           <div className="px-4 py-2.5 bg-muted/50 border-b border-border flex items-center gap-2">
             <div className="h-2 w-2 rounded-full bg-muted-foreground/40" />
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
               Customer Email
             </p>
+            {email.thread?.length > 0 && (
+              <span className="ml-auto text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+                {email.thread.length + 1} emails in thread
+              </span>
+            )}
           </div>
-          <div className="px-5 py-4 bg-card max-h-48 overflow-y-auto">
-            <div className="mb-3 pb-3 border-b border-border flex flex-wrap gap-x-6 gap-y-1">
-              <p className="text-sm">
-                <span className="font-medium text-muted-foreground">From: </span>
-                <span className="text-foreground">
-                  {email.from_name ? `${email.from_name} <${email.from_email}>` : email.from_email}
-                </span>
-              </p>
-              <p className="text-sm">
-                <span className="font-medium text-muted-foreground">Subject: </span>
-                <span className="text-foreground">{email.subject ?? '(no subject)'}</span>
-              </p>
+          <div className="px-5 py-4 bg-card max-h-56 overflow-y-auto space-y-4">
+            {/* Previous thread emails */}
+            {email.thread?.map((msg: ThreadEmail) => (
+              <div key={msg.id} className="pb-4 border-b border-border/50">
+                <div className="flex flex-wrap gap-x-6 gap-y-0.5 mb-2">
+                  <p className="text-xs text-muted-foreground">
+                    <span className="font-medium">From: </span>
+                    {msg.from_name ? `${msg.from_name} <${msg.from_email}>` : msg.from_email}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {new Date(msg.received_at).toLocaleDateString()}
+                  </p>
+                </div>
+                <pre className="text-xs whitespace-pre-wrap font-sans text-muted-foreground leading-relaxed line-clamp-4">
+                  {msg.body_text ?? '(no body)'}
+                </pre>
+              </div>
+            ))}
+            {/* Current email */}
+            <div>
+              <div className="mb-2 flex flex-wrap gap-x-6 gap-y-1">
+                <p className="text-sm">
+                  <span className="font-medium text-muted-foreground">From: </span>
+                  <span className="text-foreground">
+                    {email.from_name ? `${email.from_name} <${email.from_email}>` : email.from_email}
+                  </span>
+                </p>
+                <p className="text-sm">
+                  <span className="font-medium text-muted-foreground">Subject: </span>
+                  <span className="text-foreground">{email.subject ?? '(no subject)'}</span>
+                </p>
+              </div>
+              <pre className="text-sm whitespace-pre-wrap font-sans text-foreground/90 leading-relaxed">
+                {email.body_text ?? '(no body)'}
+              </pre>
             </div>
-            <pre className="text-sm whitespace-pre-wrap font-sans text-foreground/90 leading-relaxed">
-              {email.body_text ?? '(no body)'}
-            </pre>
           </div>
         </div>
 

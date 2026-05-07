@@ -41,17 +41,12 @@ async def sync_emails(db: DB):
         msg = get_message(token_data, stub['id'])
         parsed = parse_message(msg)
 
-        # Skip if already in DB
         existing = await db.scalar(select(Email).where(Email.gmail_id == parsed['gmail_id']))
         if existing:
             skipped += 1
             continue
 
-        email = Email(
-            id=str(uuid.uuid4()),
-            status='pending',
-            **parsed,
-        )
+        email = Email(id=str(uuid.uuid4()), status='pending', **parsed)
         db.add(email)
         try:
             await db.flush()
@@ -64,12 +59,27 @@ async def sync_emails(db: DB):
     return {'imported': imported, 'skipped': skipped, 'total_found': len(messages)}
 
 
+async def _get_thread(email: Email, db: DB) -> list[Email]:
+    """Return all emails in the same thread ordered oldest-first, excluding current email."""
+    if not email.thread_id:
+        return []
+    result = await db.execute(
+        select(Email)
+        .where(Email.thread_id == email.thread_id, Email.id != email.id)
+        .order_by(Email.received_at.asc())
+    )
+    return result.scalars().all()
+
+
 @router.get('/{email_id}', response_model=EmailRead)
 async def get_email(email_id: str, db: DB):
     email = await db.get(Email, email_id)
     if not email:
         raise HTTPException(status_code=404, detail='Email not found')
-    return email
+    thread = await _get_thread(email, db)
+    data = EmailRead.model_validate(email)
+    data.thread = thread
+    return data
 
 
 @router.post('/{email_id}/generate')
@@ -82,10 +92,17 @@ async def generate_draft_for_email(email_id: str, db: DB):
     if not email:
         raise HTTPException(status_code=404, detail='Email not found')
 
+    thread = await _get_thread(email, db)
+
     query = f"{email.subject or ''} {email.body_text or ''}".strip()
     products = await search_products(query, db, top_k=8)
 
-    draft_body, confidence_score = ai_generate(email.subject or '', email.body_text or '', products)
+    draft_body, confidence_score = ai_generate(
+        email.subject or '',
+        email.body_text or '',
+        products,
+        thread_history=thread,
+    )
 
     result = await db.execute(select(Draft).where(Draft.email_id == email_id))
     existing = result.scalar_one_or_none()

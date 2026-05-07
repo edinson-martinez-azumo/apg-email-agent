@@ -210,6 +210,7 @@ def parse_message(msg: dict[str, Any]) -> dict[str, Any]:
 
     return {
         'gmail_id': msg['id'],
+        'thread_id': msg.get('threadId'),
         'from_email': from_email,
         'from_name': from_name,
         'subject': subject,
