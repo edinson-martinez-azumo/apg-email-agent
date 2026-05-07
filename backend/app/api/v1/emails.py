@@ -94,15 +94,21 @@ async def generate_draft_for_email(email_id: str, db: DB):
 
     thread = await _get_thread(email, db)
 
-    query = f"{email.subject or ''} {email.body_text or ''}".strip()
-    products = await search_products(query, db, top_k=8)
+    try:
+        query = f"{email.subject or ''} {email.body_text or ''}".strip()
+        products = await search_products(query, db, top_k=8)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f'search_products error: {type(e).__name__}: {e}')
 
-    draft_body, confidence_score = ai_generate(
+    try:
+        draft_body, confidence_score = ai_generate(
         email.subject or '',
         email.body_text or '',
         products,
         thread_history=thread,
-    )
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f'generate_draft error: {type(e).__name__}: {e}')
 
     result = await db.execute(select(Draft).where(Draft.email_id == email_id))
     existing = result.scalar_one_or_none()
