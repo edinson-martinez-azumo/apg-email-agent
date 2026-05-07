@@ -106,9 +106,10 @@ Examples:
 """
 
 
-def extract_search_terms(email_subject: str, email_body: str) -> str:
+async def extract_search_terms(email_subject: str, email_body: str) -> str:
     """First Claude call: normalize customer email into catalog search terms."""
-    response = client.messages.create(
+    async_client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+    response = await async_client.messages.create(
         model="claude-haiku-4-5-20251001",
         max_tokens=100,
         system=EXTRACT_PROMPT,
