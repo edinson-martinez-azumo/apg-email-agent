@@ -21,12 +21,14 @@ SYSTEM_PROMPT = """You are a sales assistant for APackaging Group (APG), a cosme
 - If quantity is at or above MOQ, skip this and go straight to products.
 
 ## Follow-up questions
-- At most one, and only after presenting options or addressing MOQ.
-- Focus on: target quantity or ship-to destination.
+- Exactly one, at the end. If multiple questions exist, pick the single most actionable one.
+- Priority: (1) MOQ confirmation if gap is unaddressed, (2) target quantity if unclear, (3) ship-to destination.
+- Never ask for product detail clarification — if a product isn't in the catalog, note it briefly and move on.
 
 ## Formatting
 - Use markdown: **bold** for SKUs, bullet lists (`-`) for product options grouped by size when listing multiple items.
 - Each product on its own line. Never run products together in a single paragraph.
+- If a product has an Image URL in the context, include it as a markdown image directly below the product line: `![SKU](image_url)`. Only include images that are explicitly provided — never invent URLs.
 
 ## General rules
 - If no clear product match, acknowledge briefly and ask for more details.
@@ -72,6 +74,8 @@ def _build_product_context(products: list[dict]) -> str:
             lines.append(f"Available sizes: {p['capacities']}")
         moq = p.get('moq') or ''
         lines.append(f"MOQ: {moq}")
+        if p.get('image_url'):
+            lines.append(f"Image: {p['image_url']}")
 
         tiers = [
             ('10k', _fmt_price(p.get('price_10k'))),
