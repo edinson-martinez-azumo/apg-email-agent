@@ -43,19 +43,18 @@ export function DraftEditor({
   }
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex flex-col lg:flex-row gap-4 flex-1 min-h-0">
+    <div className="flex flex-col h-full gap-4">
 
-        {/* Customer email — left */}
-        <div className="lg:w-[32%] flex flex-col rounded-xl border border-border overflow-hidden">
-          <div className="px-4 py-2.5 bg-muted/50 border-b border-border flex items-center gap-2 shrink-0">
+        {/* Customer email — top */}
+        <div className="flex flex-col rounded-xl border border-border overflow-hidden shrink-0">
+          <div className="px-4 py-2.5 bg-muted/50 border-b border-border flex items-center gap-2">
             <div className="h-2 w-2 rounded-full bg-muted-foreground/40" />
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
               Customer Email
             </p>
           </div>
-          <div className="flex-1 p-5 overflow-y-auto bg-card">
-            <div className="mb-4 pb-4 border-b border-border space-y-1">
+          <div className="px-5 py-4 bg-card max-h-48 overflow-y-auto">
+            <div className="mb-3 pb-3 border-b border-border flex flex-wrap gap-x-6 gap-y-1">
               <p className="text-sm">
                 <span className="font-medium text-muted-foreground">From: </span>
                 <span className="text-foreground">
@@ -73,8 +72,8 @@ export function DraftEditor({
           </div>
         </div>
 
-        {/* MD Editor — right 68% */}
-        <div className="lg:w-[68%] flex flex-col rounded-xl border border-primary/40 overflow-hidden">
+        {/* MD Editor — below, takes remaining space */}
+        <div className="flex flex-col rounded-xl border border-primary/40 overflow-hidden flex-1 min-h-0">
 
           {/* Header */}
           <div className="px-4 py-2.5 bg-primary/5 border-b border-primary/20 flex items-center justify-between shrink-0">
@@ -118,7 +117,6 @@ export function DraftEditor({
             />
           </div>
         </div>
-      </div>
 
       {/* Action bar */}
       <div className="sticky bottom-0 mt-4 flex items-center justify-between border-t border-border bg-background pt-4 pb-2">
