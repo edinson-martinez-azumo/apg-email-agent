@@ -27,7 +27,7 @@ Customer email:
 def _get_cohere() -> cohere.AsyncClientV2:
     global _cohere
     if _cohere is None:
-        _cohere = cohere.AsyncClientV2(api_key=settings.cohere_api_key)
+        _cohere = cohere.AsyncClientV2(api_key=settings.cohere_api_key.strip())
     return _cohere
 
 
