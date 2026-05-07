@@ -28,7 +28,7 @@ SYSTEM_PROMPT = """You are a sales assistant for APackaging Group (APG), a cosme
 ## Formatting
 - Use markdown: **bold** for SKUs, bullet lists (`-`) for product options grouped by size when listing multiple items.
 - Each product on its own line. Never run products together in a single paragraph.
-- If the product context contains a markdown image line `![SKU](url)`, copy it verbatim on the line directly below the product bullet. Never invent or modify image URLs.
+- Each product on its own line. Never run products together in a single paragraph.
 
 ## General rules
 - If no clear product match, acknowledge briefly and ask for more details.
@@ -75,7 +75,7 @@ def _build_product_context(products: list[dict]) -> str:
         moq = p.get('moq') or ''
         lines.append(f"MOQ: {moq}")
         if p.get('image_url'):
-            lines.append(f"![{p['sku']}]({p['image_url']})")
+            lines.append(f"Image URL: {p['image_url']}")
 
         tiers = [
             ('10k', _fmt_price(p.get('price_10k'))),
@@ -130,6 +130,22 @@ async def extract_search_terms(email_subject: str, email_body: str) -> str:
     return response.content[0].text.strip()
 
 
+def _inject_images(draft: str, products: list[dict]) -> str:
+    """Insert image markdown below each SKU mention line in the draft."""
+    image_map = {p['sku']: p['image_url'] for p in products if p.get('image_url')}
+    if not image_map:
+        return draft
+    lines = draft.split('\n')
+    result = []
+    for line in lines:
+        result.append(line)
+        for sku, url in image_map.items():
+            if sku in line and f'![{sku}]' not in line:
+                result.append(f'![{sku}]({url})')
+                break
+    return '\n'.join(result)
+
+
 def generate_draft(
     email_subject: str,
     email_body: str,
@@ -162,7 +178,8 @@ Please write a professional reply email body (no subject line needed)."""
         messages=[{"role": "user", "content": user_message}],
     )
 
-    return _parse_response(response.content[0].text)
+    draft, score = _parse_response(response.content[0].text)
+    return _inject_images(draft, products), score
 
 
 def _parse_response(text: str) -> tuple[str, float]:
