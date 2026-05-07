@@ -58,6 +58,10 @@ def _load_products() -> pd.DataFrame:
         .agg(' '.join, axis=1)
         .str.lower()
     )
+    merged['title'] = merged['title'].fillna('').astype(str).replace('nan', '')
+    merged['title'] = merged.apply(
+        lambda r: r['description'] if not r['title'] and r.get('description') else r['title'], axis=1
+    )
     merged['capacities'] = merged['tags'].fillna('').apply(_parse_capacities)
     merged['in_stock'] = merged['title'].str.contains(r'in stock', case=False, na=False)
     return merged
