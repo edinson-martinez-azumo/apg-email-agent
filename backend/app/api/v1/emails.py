@@ -86,7 +86,8 @@ async def get_email(email_id: str, db: DB):
 async def generate_draft_for_email(email_id: str, db: DB):
     """Trigger or re-generate an AI draft for this email."""
     from app.services.embedding_service import search_products
-    from app.services.claude_service import generate_draft as ai_generate
+    from app.services.claude_service import generate_draft as ai_generate, extract_search_terms
+    import asyncio
 
     email = await db.get(Email, email_id)
     if not email:
@@ -94,8 +95,11 @@ async def generate_draft_for_email(email_id: str, db: DB):
 
     thread = await _get_thread(email, db)
 
-    query = f"{email.subject or ''} {email.body_text or ''}".strip()
-    products = await search_products(query, db, top_k=8)
+    raw_query = f"{email.subject or ''} {email.body_text or ''}".strip()
+    search_query = await asyncio.get_event_loop().run_in_executor(
+        None, extract_search_terms, email.subject or '', email.body_text or ''
+    )
+    products = await search_products(search_query, db, top_k=8)
 
     draft_body, confidence_score = ai_generate(
         email.subject or '',

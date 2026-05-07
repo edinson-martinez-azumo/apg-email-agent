@@ -93,6 +93,30 @@ def _build_thread_context(thread_history: list) -> str:
     return '\n'.join(lines)
 
 
+EXTRACT_PROMPT = """You are a search query builder for a packaging product catalog.
+
+Given a customer email, extract the key product search terms in normalized form.
+Convert any imperial measurements to metric (e.g. 16oz → 473ml, 8oz → 237ml, 1oz → 30ml).
+Output a single line of space-separated search terms — no explanation, no punctuation, no labels.
+
+Examples:
+- "need 16oz foaming hand soap bottle" → foamer bottle 473ml PET
+- "looking for 1oz airless pump for serum" → airless pump bottle 30ml serum
+- "APG-40D-450-WT availability and pricing" → APG-40D-450-WT foamer bottle 450ml
+"""
+
+
+def extract_search_terms(email_subject: str, email_body: str) -> str:
+    """First Claude call: normalize customer email into catalog search terms."""
+    response = client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=100,
+        system=EXTRACT_PROMPT,
+        messages=[{"role": "user", "content": f"Subject: {email_subject}\n\n{email_body}"}],
+    )
+    return response.content[0].text.strip()
+
+
 def generate_draft(
     email_subject: str,
     email_body: str,

@@ -34,6 +34,8 @@ def _load_products() -> pd.DataFrame:
         'MOQ (product.metafields.sf_product_tabs.tab_1_moq)': 'moq',
         'Materials (product.metafields.sf_product_tabs.tab_1_materials)': 'materials',
         'Tags': 'tags',
+        'Image Src': 'image_url',
+        'Height x Diameter (product.metafields.custom.h_d)': 'dimensions',
     }
     shopify = shopify.rename(columns=sh_cols)[list(sh_cols.values())].dropna(subset=['sku'])
 

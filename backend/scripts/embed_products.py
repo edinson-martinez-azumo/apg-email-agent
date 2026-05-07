@@ -29,8 +29,9 @@ EMBED_MODEL = 'embed-english-light-v3.0'
 BATCH_SIZE = 96
 SLEEP_S = 8.0
 
-STR_COLS = ['sku', 'title', 'search_text', 'type', 'materials', 'moq',
-            'capacities', 'price_base', 'price_10k', 'price_25k', 'price_50k', 'price_100k']
+STR_COLS = ['sku', 'title', 'search_text', 'type', 'materials', 'moq', 'fb_moq',
+            'capacities', 'price_base', 'price_10k', 'price_25k', 'price_50k', 'price_100k',
+            'image_url', 'dimensions']
 
 
 def _clean(val) -> str:
@@ -92,7 +93,7 @@ async def run(force_all: bool = False) -> None:
                     embedding=embedding,
                     type=rec['type'] or None,
                     materials=rec['materials'] or None,
-                    moq=rec['moq'] or None,
+                    moq=rec['moq'] or rec['fb_moq'] or None,
                     capacities=rec['capacities'] or None,
                     price_base=rec['price_base'] or None,
                     price_10k=rec['price_10k'] or None,
@@ -100,6 +101,8 @@ async def run(force_all: bool = False) -> None:
                     price_50k=rec['price_50k'] or None,
                     price_100k=rec['price_100k'] or None,
                     in_stock=rec['in_stock'],
+                    image_url=rec['image_url'] or None,
+                    dimensions=rec['dimensions'] or None,
                     search_vector=rec['search_text'],
                 ).on_conflict_do_update(
                     index_elements=['sku'],
@@ -109,14 +112,15 @@ async def run(force_all: bool = False) -> None:
                         embedding=embedding,
                         type=rec['type'] or None,
                         materials=rec['materials'] or None,
-                        moq=rec['moq'] or None,
+                        moq=rec['moq'] or rec['fb_moq'] or None,
                         capacities=rec['capacities'] or None,
                         price_base=rec['price_base'] or None,
                         price_10k=rec['price_10k'] or None,
                         price_25k=rec['price_25k'] or None,
-                        price_50k=rec['price_50k'] or None,
                         price_100k=rec['price_100k'] or None,
                         in_stock=rec['in_stock'],
+                        image_url=rec['image_url'] or None,
+                        dimensions=rec['dimensions'] or None,
                         search_vector=rec['search_text'],
                     ),
                 )

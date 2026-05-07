@@ -21,6 +21,8 @@ class ProductEmbedding(Base):
     price_50k:     Mapped[str | None]  = mapped_column(Text)
     price_100k:    Mapped[str | None]  = mapped_column(Text)
     in_stock:      Mapped[bool | None] = mapped_column(Boolean, server_default='false')
+    image_url:     Mapped[str | None]  = mapped_column(Text)
+    dimensions:    Mapped[str | None]  = mapped_column(Text)
     search_vector: Mapped[str | None]  = mapped_column(Text)
     updated_at:    Mapped[DateTime]    = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
