@@ -28,7 +28,7 @@ SYSTEM_PROMPT = """You are a sales assistant for APackaging Group (APG), a cosme
 ## Formatting
 - Use markdown: **bold** for SKUs, bullet lists (`-`) for product options grouped by size when listing multiple items.
 - Each product on its own line. Never run products together in a single paragraph.
-- If a product has an Image URL in the context, include it as a markdown image directly below the product line: `![SKU](image_url)`. Only include images that are explicitly provided — never invent URLs.
+- If the product context contains a markdown image line `![SKU](url)`, copy it verbatim on the line directly below the product bullet. Never invent or modify image URLs.
 
 ## General rules
 - If no clear product match, acknowledge briefly and ask for more details.
@@ -75,7 +75,7 @@ def _build_product_context(products: list[dict]) -> str:
         moq = p.get('moq') or ''
         lines.append(f"MOQ: {moq}")
         if p.get('image_url'):
-            lines.append(f"Image: {p['image_url']}")
+            lines.append(f"![{p['sku']}]({p['image_url']})")
 
         tiers = [
             ('10k', _fmt_price(p.get('price_10k'))),
