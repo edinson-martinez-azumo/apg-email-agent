@@ -38,8 +38,9 @@ def _get_anthropic() -> anthropic.Anthropic:
     return _anthropic
 
 
-def _enrich_query(raw_query: str) -> str:
-    response = _get_anthropic().messages.create(
+async def _enrich_query(raw_query: str) -> str:
+    async_client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+    response = await async_client.messages.create(
         model='claude-haiku-4-5-20251001',
         max_tokens=80,
         messages=[{'role': 'user', 'content': f'{ENRICH_PROMPT}{raw_query}'}],
@@ -73,7 +74,7 @@ async def search_products(query: str, db: AsyncSession, top_k: int = 8) -> list[
         text("SELECT COUNT(*) FROM product_embeddings WHERE price_10k IS NOT NULL LIMIT 1")
     )
 
-    enriched = _enrich_query(query)
+    enriched = await _enrich_query(query)
     query_embedding = await embed(enriched)
 
     if has_metadata:
