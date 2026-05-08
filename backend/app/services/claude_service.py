@@ -26,9 +26,11 @@ SYSTEM_PROMPT = """You are a sales assistant for APackaging Group (APG), a cosme
 - Priority: (1) MOQ confirmation if gap is unaddressed, (2) target quantity if unclear, (3) ship-to destination.
 - Never ask for product detail clarification — if a product isn't in the catalog, note it briefly and move on.
 
+## Thread context
+- If the thread history already contains product recommendations, do not repeat them. Focus on advancing the conversation: answer pricing questions, confirm sampling options, or ask for target quantity/annual volume to work toward competitive pricing.
+
 ## Formatting
 - Use markdown: **bold** for SKUs, bullet lists (`-`) for product options grouped by size when listing multiple items.
-- Each product on its own line. Never run products together in a single paragraph.
 - Each product on its own line. Never run products together in a single paragraph.
 
 ## General rules
@@ -155,6 +157,28 @@ def _inject_images(draft: str, products: list[dict]) -> str:
         if matched_sku and image_map.get(matched_sku) and f'![{matched_sku}]' not in line:
             result.append(f'![{matched_sku}]({image_map[matched_sku]})')
 
+    return _remove_empty_headings('\n'.join(result))
+
+
+def _remove_empty_headings(text: str) -> str:
+    """Remove markdown headings (## or **bold:**) that have no product bullets below them."""
+    lines = text.split('\n')
+    result = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        is_heading = re.match(r'^#{1,3} |^\*\*[^*]+\*\*\s*$', line)
+        if is_heading:
+            # Look ahead: is the next non-empty line another heading or end of text?
+            j = i + 1
+            while j < len(lines) and lines[j].strip() == '':
+                j += 1
+            next_is_heading_or_end = j >= len(lines) or bool(re.match(r'^#{1,3} |\*\*[^*]+\*\*\s*$', lines[j]))
+            if next_is_heading_or_end:
+                i = j  # skip this heading and its trailing blanks
+                continue
+        result.append(line)
+        i += 1
     return '\n'.join(result)
 
 
