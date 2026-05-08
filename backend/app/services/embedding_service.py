@@ -82,6 +82,7 @@ async def search_products(query: str, db: AsyncSession, top_k: int = 8) -> list[
             SELECT
                 sku, title, type, materials, moq, capacities,
                 price_base, price_10k, price_25k, price_50k, price_100k, in_stock,
+                image_url,
                 (0.7 * (1 - (embedding <=> CAST(:vec AS vector))) +
                  0.3 * ts_rank(search_vector_ts, plainto_tsquery('english', :q))) AS score
             FROM product_embeddings
@@ -104,6 +105,7 @@ async def search_products(query: str, db: AsyncSession, top_k: int = 8) -> list[
                 'price_25k': r['price_25k'] or '',
                 'price_50k': r['price_50k'] or '',
                 'price_100k': r['price_100k'] or '',
+                'image_url': r['image_url'] or '',
             }
             for r in rows
         ]
