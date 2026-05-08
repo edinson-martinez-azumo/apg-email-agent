@@ -6,14 +6,16 @@ import type { Email } from '@/types/api'
 
 interface ThreadRowProps {
   emails: Email[]  // sorted oldest → newest
+  latestFirst?: boolean
 }
 
-export function ThreadRow({ emails }: ThreadRowProps) {
+export function ThreadRow({ emails, latestFirst = false }: ThreadRowProps) {
   const [isExpanded, setIsExpanded] = useState(false)
   const [expandedEmailId, setExpandedEmailId] = useState<string | null>(null)
 
   const latest = emails[emails.length - 1]
   const sender = latest.from_name ?? latest.from_email
+  const displayEmails = latestFirst ? [...emails].reverse() : emails
 
   // Deduplicate statuses for the badge row
   const statuses = [...new Set(emails.map(e => e.status))]
@@ -84,12 +86,14 @@ export function ThreadRow({ emails }: ThreadRowProps) {
             <div className="absolute left-[28px] top-0 bottom-0 w-px bg-border" aria-hidden="true" />
 
             <div className="space-y-0">
-              {emails.map((email, idx) => (
+              {displayEmails.map((email, idx) => {
+                const isLatest = email.id === latest.id
+                return (
                 <div key={email.id} className="relative">
                   {/* Timeline dot */}
                   <div
                     className={`absolute left-5 top-5 h-3.5 w-3.5 rounded-full border-2 border-card z-10 ${
-                      idx === emails.length - 1 ? 'bg-primary' : 'bg-muted-foreground/40'
+                      isLatest ? 'bg-primary' : 'bg-muted-foreground/40'
                     }`}
                     aria-hidden="true"
                   />
@@ -107,6 +111,9 @@ export function ThreadRow({ emails }: ThreadRowProps) {
                         <span className="text-xs text-muted-foreground ml-2">
                           {formatRelativeTime(email.received_at)}
                         </span>
+                        {!isLatest && latestFirst && (
+                          <span className="text-xs text-muted-foreground/50 ml-2 italic">read-only</span>
+                        )}
                       </div>
                       <StatusBadge status={email.status} />
                       <svg
@@ -136,15 +143,17 @@ export function ThreadRow({ emails }: ThreadRowProps) {
                         isExpanded={true}
                         onToggle={() => handleToggleEmail(email.id)}
                         hideHeader
+                        readOnly={latestFirst && !isLatest}
                       />
                     </div>
                   )}
 
-                  {idx < emails.length - 1 && (
+                  {idx < displayEmails.length - 1 && (
                     <div className="ml-12 mr-4 border-b border-border/50" />
                   )}
                 </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         </div>

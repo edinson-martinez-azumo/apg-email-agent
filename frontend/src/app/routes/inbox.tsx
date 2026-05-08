@@ -177,6 +177,7 @@ export function InboxPage() {
                   <ThreadRow
                     key={group[0].thread_id ?? group[0].id}
                     emails={group}
+                    latestFirst={activeStatus === 'draft_ready'}
                   />
                 )
               })}

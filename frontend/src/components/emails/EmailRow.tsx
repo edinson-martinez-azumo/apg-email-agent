@@ -15,9 +15,10 @@ interface EmailRowProps {
   isExpanded: boolean
   onToggle: () => void
   hideHeader?: boolean
+  readOnly?: boolean
 }
 
-export function EmailRow({ email, isExpanded, onToggle, hideHeader = false }: EmailRowProps) {
+export function EmailRow({ email, isExpanded, onToggle, hideHeader = false, readOnly = false }: EmailRowProps) {
   return (
     <article
       className={`rounded-xl border bg-card shadow-sm overflow-hidden transition-[border-color] duration-200 ${
@@ -67,7 +68,7 @@ export function EmailRow({ email, isExpanded, onToggle, hideHeader = false }: Em
         <div className={hideHeader ? '' : 'border-t border-border animate-in fade-in duration-150'}>
           {email.status === 'pending' && <PendingContent email={email} />}
           {(email.status === 'draft_ready' || email.status === 'approved') && (
-            <DraftContent email={email} />
+            <DraftContent email={email} readOnly={readOnly} />
           )}
           {email.status === 'sent' && <SentContent email={email} />}
           {email.status === 'discarded' && <DiscardedContent email={email} />}
@@ -142,7 +143,7 @@ function ConfidenceBadge({ score }: { score: number | null }) {
 
 // ─── Draft ready / approved ───────────────────────────────────────────────────
 
-function DraftContent({ email }: { email: Email }) {
+function DraftContent({ email, readOnly = false }: { email: Email; readOnly?: boolean }) {
   const [discardConfirm, setDiscardConfirm] = useState(false)
   const { data: draft, isLoading, isError } = useDraftByEmail(email.id)
   const approveDraft = useApproveDraft()
@@ -236,7 +237,7 @@ function DraftContent({ email }: { email: Email }) {
         </div>
       </div>
 
-      <div className="border-t border-border px-5 py-3 flex items-center justify-between gap-3 flex-wrap">
+      {!readOnly && <div className="border-t border-border px-5 py-3 flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2">
           {discardConfirm ? (
             <>
@@ -301,7 +302,7 @@ function DraftContent({ email }: { email: Email }) {
             )}
           </button>
         </div>
-      </div>
+      </div>}
     </div>
   )
 }
