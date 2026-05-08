@@ -11,7 +11,9 @@ interface ThreadRowProps {
 
 export function ThreadRow({ emails, latestFirst = false }: ThreadRowProps) {
   const [isExpanded, setIsExpanded] = useState(false)
-  const [expandedEmailId, setExpandedEmailId] = useState<string | null>(null)
+  const [expandedEmailId, setExpandedEmailId] = useState<string | null>(
+    latestFirst ? latest.id : null
+  )
 
   const latest = emails[emails.length - 1]
   const sender = latest.from_name ?? latest.from_email

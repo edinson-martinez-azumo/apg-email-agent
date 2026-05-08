@@ -22,7 +22,21 @@ async def list_emails(db: DB, status: str | None = None, page: int = 1, size: in
         count_q = count_q.where(Email.status == status)
     total = await db.scalar(count_q)
     result = await db.execute(q.offset((page - 1) * size).limit(size))
-    emails = result.scalars().all()
+    emails = list(result.scalars().all())
+
+    # Include thread siblings so the UI can render full thread context
+    if status and emails:
+        thread_ids = {e.thread_id for e in emails if e.thread_id}
+        if thread_ids:
+            seen_ids = {e.id for e in emails}
+            siblings = await db.execute(
+                select(Email).where(
+                    Email.thread_id.in_(thread_ids),
+                    Email.id.not_in(seen_ids),
+                )
+            )
+            emails = emails + list(siblings.scalars().all())
+
     return {'items': emails, 'total': total or 0, 'page': page, 'size': size}
 
 
