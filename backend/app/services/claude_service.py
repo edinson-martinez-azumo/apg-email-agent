@@ -132,18 +132,29 @@ async def extract_search_terms(email_subject: str, email_body: str) -> str:
 
 
 def _inject_images(draft: str, products: list[dict]) -> str:
-    """Insert image markdown below each SKU mention line in the draft."""
+    """Insert image markdown below each SKU mention line; deduplicate repeated SKU bullets."""
     image_map = {p['sku']: p['image_url'] for p in products if p.get('image_url')}
-    if not image_map:
-        return draft
+    all_skus = {p['sku'] for p in products}
+
     lines = draft.split('\n')
     result = []
+    seen_skus: set[str] = set()
+
     for line in lines:
+        # Detect bullet lines that mention a known SKU
+        matched_sku = next((s for s in all_skus if s in line), None)
+
+        if matched_sku:
+            if matched_sku in seen_skus:
+                # Skip this bullet and any immediately following image line
+                continue
+            seen_skus.add(matched_sku)
+
         result.append(line)
-        for sku, url in image_map.items():
-            if sku in line and f'![{sku}]' not in line:
-                result.append(f'![{sku}]({url})')
-                break
+
+        if matched_sku and image_map.get(matched_sku) and f'![{matched_sku}]' not in line:
+            result.append(f'![{matched_sku}]({image_map[matched_sku]})')
+
     return '\n'.join(result)
 
 
