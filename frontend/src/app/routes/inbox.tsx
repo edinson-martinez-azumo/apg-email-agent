@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import { EmailRow } from '@/components/emails/EmailRow'
+import { ThreadRow } from '@/components/emails/ThreadRow'
 import { useEmails, useSyncEmails } from '@/hooks/useEmails'
 import type { Email } from '@/types/api'
 
@@ -55,6 +56,20 @@ export function InboxPage() {
   }
 
   const pendingCount = data?.total ?? 0
+
+  // Group emails by thread_id; singles stay as-is
+  const threadGroups = useMemo(() => {
+    if (!data?.items) return []
+    const map = new Map<string, Email[]>()
+    for (const email of data.items) {
+      const key = email.thread_id ?? email.id
+      if (!map.has(key)) map.set(key, [])
+      map.get(key)!.push(email)
+    }
+    return Array.from(map.values())
+      .map(group => group.sort((a, b) => new Date(a.received_at).getTime() - new Date(b.received_at).getTime()))
+      .sort((a, b) => new Date(b[b.length - 1].received_at).getTime() - new Date(a[a.length - 1].received_at).getTime())
+  }, [data?.items])
 
   return (
     <div className="min-h-screen bg-background">
@@ -144,16 +159,27 @@ export function InboxPage() {
               <p className="text-sm text-muted-foreground">No emails in this category</p>
             </div>
           )}
-          {data && data.items.length > 0 && (
+          {data && threadGroups.length > 0 && (
             <div className="space-y-2">
-              {data.items.map((email: Email) => (
-                <EmailRow
-                  key={email.id}
-                  email={email}
-                  isExpanded={expandedId === email.id}
-                  onToggle={() => handleToggle(email.id)}
-                />
-              ))}
+              {threadGroups.map(group => {
+                if (group.length === 1) {
+                  const email = group[0]
+                  return (
+                    <EmailRow
+                      key={email.id}
+                      email={email}
+                      isExpanded={expandedId === email.id}
+                      onToggle={() => handleToggle(email.id)}
+                    />
+                  )
+                }
+                return (
+                  <ThreadRow
+                    key={group[0].thread_id ?? group[0].id}
+                    emails={group}
+                  />
+                )
+              })}
             </div>
           )}
         </div>

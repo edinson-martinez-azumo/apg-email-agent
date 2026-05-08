@@ -14,53 +14,57 @@ interface EmailRowProps {
   email: Email
   isExpanded: boolean
   onToggle: () => void
+  hideHeader?: boolean
 }
 
-export function EmailRow({ email, isExpanded, onToggle }: EmailRowProps) {
+export function EmailRow({ email, isExpanded, onToggle, hideHeader = false }: EmailRowProps) {
   return (
     <article
       className={`rounded-xl border bg-card shadow-sm overflow-hidden transition-[border-color] duration-200 ${
+        hideHeader ? 'border-0 shadow-none rounded-none' :
         isExpanded ? 'border-primary/25' : 'border-border hover:border-primary/20'
       }`}
     >
-      <button
-        onClick={onToggle}
-        aria-expanded={isExpanded}
-        className="w-full flex items-center gap-4 px-5 py-4 cursor-pointer text-left"
-      >
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-0.5">
-            <span className="font-semibold text-sm text-foreground truncate">
-              {email.from_name ?? email.from_email}
-            </span>
-            {email.from_name && (
-              <span className="text-xs text-muted-foreground truncate hidden sm:inline">
-                &lt;{email.from_email}&gt;
+      {!hideHeader && (
+        <button
+          onClick={onToggle}
+          aria-expanded={isExpanded}
+          className="w-full flex items-center gap-4 px-5 py-4 cursor-pointer text-left"
+        >
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-0.5">
+              <span className="font-semibold text-sm text-foreground truncate">
+                {email.from_name ?? email.from_email}
               </span>
-            )}
+              {email.from_name && (
+                <span className="text-xs text-muted-foreground truncate hidden sm:inline">
+                  &lt;{email.from_email}&gt;
+                </span>
+              )}
+            </div>
+            <p className="text-sm text-foreground/75 truncate">
+              {email.subject ?? '(no subject)'}
+            </p>
           </div>
-          <p className="text-sm text-foreground/75 truncate">
-            {email.subject ?? '(no subject)'}
-          </p>
-        </div>
 
-        <div className="flex items-center gap-2.5 shrink-0">
-          <span className="text-xs text-muted-foreground whitespace-nowrap hidden sm:inline">
-            {formatRelativeTime(email.received_at)}
-          </span>
-          <StatusBadge status={email.status} />
-          <svg
-            aria-hidden="true"
-            className={`h-4 w-4 text-muted-foreground/60 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
-            fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-          </svg>
-        </div>
-      </button>
+          <div className="flex items-center gap-2.5 shrink-0">
+            <span className="text-xs text-muted-foreground whitespace-nowrap hidden sm:inline">
+              {formatRelativeTime(email.received_at)}
+            </span>
+            <StatusBadge status={email.status} />
+            <svg
+              aria-hidden="true"
+              className={`h-4 w-4 text-muted-foreground/60 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
+              fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
+          </div>
+        </button>
+      )}
 
-      {isExpanded && (
-        <div className="border-t border-border animate-in fade-in duration-150">
+      {(isExpanded || hideHeader) && (
+        <div className={hideHeader ? '' : 'border-t border-border animate-in fade-in duration-150'}>
           {email.status === 'pending' && <PendingContent email={email} />}
           {(email.status === 'draft_ready' || email.status === 'approved') && (
             <DraftContent email={email} />
