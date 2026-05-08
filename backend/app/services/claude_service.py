@@ -81,18 +81,6 @@ def _build_product_context(products: list[dict]) -> str:
         if p.get('image_url'):
             lines.append(f"Image URL: {p['image_url']}")
 
-        tiers = [
-            ('10k', _fmt_price(p.get('price_10k'))),
-            ('25k', _fmt_price(p.get('price_25k'))),
-            ('50k', _fmt_price(p.get('price_50k'))),
-            ('100k', _fmt_price(p.get('price_100k'))),
-        ]
-        tier_str = ' | '.join(f'@{qty} {price}' for qty, price in tiers if price)
-        if tier_str:
-            lines.append(f"Pricing: {tier_str}")
-        else:
-            lines.append("Pricing: available upon request")
-
         blocks.append('\n'.join(lines))
 
     return "Relevant APG products:\n\n" + "\n\n".join(blocks)
