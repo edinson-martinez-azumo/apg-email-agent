@@ -118,6 +118,19 @@ def _text_to_html(text: str) -> str:
             html_lines.append(f'<table style="border-collapse:collapse;width:100%;margin:8px 0;"><tr>{row_html}</tr></table>')
             continue
 
+        # Markdown images: ![alt](url)
+        img_match = re.match(r'^!\[([^\]]*)\]\(([^)]+)\)\s*$', line.strip())
+        if img_match:
+            if in_list:
+                html_lines.append('</ul>')
+                in_list = False
+            alt, src = img_match.group(1), img_match.group(2)
+            html_lines.append(
+                f'<img src="{src}" alt="{alt}" '
+                f'style="display:block;max-width:200px;height:auto;margin:6px 0 10px;border-radius:6px;">'
+            )
+            continue
+
         # Headings
         if line.startswith('### '):
             if in_list: html_lines.append('</ul>'); in_list = False
