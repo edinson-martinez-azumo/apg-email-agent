@@ -16,8 +16,10 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import cohere
+import httpx
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import NullPool
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy import text
 
@@ -41,7 +43,7 @@ def _clean(val) -> str:
     return '' if s.lower() == 'nan' else s
 
 
-async def run(force_all: bool = False) -> None:
+async def run(force_all: bool = False, resume_batch: int = 0) -> None:
     df = _load_products()
     for col in STR_COLS:
         if col not in df.columns:
@@ -51,8 +53,22 @@ async def run(force_all: bool = False) -> None:
 
     records = df[STR_COLS + ['in_stock']].drop_duplicates('sku').to_dict('records')
 
-    engine = create_async_engine(settings.database_url, pool_size=1, max_overflow=0)
+    engine = create_async_engine(settings.database_url, poolclass=NullPool)
     async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    # Pull enriched search_text from DB (written by enrich_fishbowl.py) and
+    # overlay it on the Excel records so embeddings use the richer text.
+    async with async_session() as session:
+        db_result = await session.execute(
+            text('SELECT sku, search_text FROM product_embeddings WHERE search_text IS NOT NULL')
+        )
+        db_search_text = {row[0]: row[1] for row in db_result.fetchall()}
+
+    sku_to_record = {r['sku']: r for r in records}
+    for sku, db_text in db_search_text.items():
+        if sku in sku_to_record and db_text:
+            sku_to_record[sku]['search_text'] = db_text
+    records = list(sku_to_record.values())
 
     if force_all:
         pending = records
@@ -61,6 +77,10 @@ async def run(force_all: bool = False) -> None:
             result = await session.execute(text('SELECT sku FROM product_embeddings WHERE price_10k IS NOT NULL'))
             done = {row[0] for row in result.fetchall()}
         pending = [r for r in records if r['sku'] not in done]
+
+    if resume_batch:
+        pending = pending[resume_batch * BATCH_SIZE:]
+        print(f"Resuming from batch {resume_batch} (skipping {resume_batch * BATCH_SIZE} records)")
 
     n_batches = (len(pending) + BATCH_SIZE - 1) // BATCH_SIZE
     print(f"Total: {len(records)}  Pending: {len(pending)} → {n_batches} batches")
@@ -77,12 +97,23 @@ async def run(force_all: bool = False) -> None:
         batch = pending[i:i + BATCH_SIZE]
         texts = [r['search_text'] or r['title'] or r['sku'] for r in batch]
 
-        resp = await client.embed(
-            texts=texts,
-            model=EMBED_MODEL,
-            input_type='search_document',
-            embedding_types=['float'],
-        )
+        for attempt in range(5):
+            try:
+                resp = await client.embed(
+                    texts=texts,
+                    model=EMBED_MODEL,
+                    input_type='search_document',
+                    embedding_types=['float'],
+                )
+                break
+            except (httpx.ReadTimeout, cohere.errors.too_many_requests_error.TooManyRequestsError) as e:
+                wait = 15 * (2 ** attempt)
+                print(f"\n  [{type(e).__name__}] retry {attempt + 1}/5 in {wait}s…")
+                await asyncio.sleep(wait)
+        else:
+            print(f"\nFailed batch {i // BATCH_SIZE + 1} after 5 retries. Aborting.")
+            await engine.dispose()
+            sys.exit(1)
 
         async with async_session() as session:
             for rec, embedding in zip(batch, resp.embeddings.float_):
@@ -139,4 +170,8 @@ async def run(force_all: bool = False) -> None:
 
 if __name__ == '__main__':
     force_all = '--all' in sys.argv
-    asyncio.run(run(force_all=force_all))
+    resume_batch = 0
+    for arg in sys.argv:
+        if arg.startswith('--resume-batch='):
+            resume_batch = int(arg.split('=', 1)[1])
+    asyncio.run(run(force_all=force_all, resume_batch=resume_batch))
