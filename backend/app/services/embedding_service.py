@@ -6,6 +6,8 @@ from app.core.config import settings
 
 EMBED_MODEL = 'embed-english-light-v3.0'
 EMBED_DIMS = 384
+RERANK_MODEL = 'rerank-english-v3.0'
+CANDIDATES_MULTIPLIER = 3  # fetch 3x candidates then rerank down to top_k
 
 _cohere: cohere.AsyncClientV2 | None = None
 _anthropic: anthropic.Anthropic | None = None
@@ -49,6 +51,23 @@ async def _enrich_query(raw_query: str) -> str:
     return f'{raw_query} {terms}'
 
 
+async def _rerank(query: str, candidates: list[dict], top_k: int) -> list[dict]:
+    """Rerank candidates using Cohere reranker. Returns top_k best matches."""
+    if len(candidates) <= top_k:
+        return candidates
+    documents = [
+        f"SKU: {c['sku']}. {c['title']}. Capacity: {c['capacities']}. Materials: {c['materials']}. Type: {c['type']}. MOQ: {c['moq']}."
+        for c in candidates
+    ]
+    response = await _get_cohere().rerank(
+        query=query,
+        documents=documents,
+        model=RERANK_MODEL,
+        top_n=top_k,
+    )
+    return [candidates[r.index] for r in response.results]
+
+
 async def embed(text_input: str) -> list[float]:
     resp = await _get_cohere().embed(
         texts=[text_input],
@@ -76,6 +95,7 @@ async def search_products(query: str, db: AsyncSession, top_k: int = 8) -> list[
 
     enriched = await _enrich_query(query)
     query_embedding = await embed(enriched)
+    candidates_k = top_k * CANDIDATES_MULTIPLIER
 
     if has_metadata:
         sql = text("""
@@ -89,9 +109,9 @@ async def search_products(query: str, db: AsyncSession, top_k: int = 8) -> list[
             ORDER BY score DESC
             LIMIT :k
         """)
-        result = await db.execute(sql, {'vec': str(query_embedding), 'q': query, 'k': top_k})
+        result = await db.execute(sql, {'vec': str(query_embedding), 'q': query, 'k': candidates_k})
         rows = result.mappings().all()
-        return [
+        candidates = [
             {
                 'sku': r['sku'],
                 'title': r['title'] or '',
@@ -109,6 +129,7 @@ async def search_products(query: str, db: AsyncSession, top_k: int = 8) -> list[
             }
             for r in rows
         ]
+        return await _rerank(enriched, candidates, top_k)
     else:
         # Pre-migration fallback: cosine only + DataFrame merge
         from sqlalchemy import select as sa_select
