@@ -67,6 +67,12 @@ def _fmt_price(val: object) -> str:
         return ''
 
 
+def _has_confirmed_specs(p: dict) -> bool:
+    """Skip products whose key specs (capacity) cannot be confirmed from the data."""
+    cap = str(p.get('capacities') or '').strip()
+    return bool(cap and cap not in ('nan', 'None', '-'))
+
+
 def _build_product_context(products: list[dict]) -> str:
     if not products:
         return "No specific product matches found — respond generally about APG's catalog."
@@ -187,7 +193,8 @@ def generate_draft(
     Generate a reply draft given pre-fetched products and optional thread history.
     Returns (draft_body, confidence_score 1-5).
     """
-    product_context = _build_product_context(products)
+    confirmed = [p for p in products if _has_confirmed_specs(p)]
+    product_context = _build_product_context(confirmed)
     thread_context = _build_thread_context(thread_history or [])
 
     thread_section = f"\n\n{thread_context}\n" if thread_context else ''
@@ -210,7 +217,7 @@ Please write a professional reply email body (no subject line needed)."""
     )
 
     draft, score = _parse_response(response.content[0].text)
-    return _inject_images(draft, products), score
+    return _inject_images(draft, confirmed), score
 
 
 def _parse_response(text: str) -> tuple[str, float]:
