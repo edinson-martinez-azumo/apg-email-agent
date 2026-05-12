@@ -226,7 +226,7 @@ async def _fetch_exact_skus(query: str, db: AsyncSession) -> list[dict]:
     return sorted([_row_to_dict(r) for r in rows], key=lambda r: sku_order.get(r['sku'], 999))
 
 
-async def search_products(query: str, db: AsyncSession, top_k: int = 8) -> list[dict]:
+async def search_products(query: str, db: AsyncSession, top_k: int = 12) -> list[dict]:
     """
     Hybrid search: cosine similarity (0.7) + full-text ts_rank (0.3).
     SKUs explicitly named in the query are injected at the top of results.

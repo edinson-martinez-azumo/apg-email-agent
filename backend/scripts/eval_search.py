@@ -32,7 +32,7 @@ DATA_FILE = os.path.join(os.path.dirname(__file__), '..', 'data', 'eval_dataset.
 
 def _parse_args():
     mode = 'embedding'
-    top_k = 8
+    top_k = 12
     for arg in sys.argv[1:]:
         if arg == '--mode' or arg.startswith('--mode='):
             if '=' in arg:
