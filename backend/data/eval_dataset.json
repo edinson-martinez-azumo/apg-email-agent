@@ -1,0 +1,102 @@
+[
+  {
+    "id": "case_01",
+    "source": "email 1.pdf",
+    "customer": "Makoha Wellness",
+    "contact": "Elaine",
+    "email_subject": "Fine Mist Sprayer / Airless Bottle Inquiry",
+    "email_body": "Hi,\n\nI came across your product APG-200547 and I'm very interested. We're looking for fine mist sprayers and airless bottles in 30ml, 50ml, and 100ml sizes for our skincare line.\n\nCould you please provide pricing and MOQ information?\n\nThank you,\nElaine\nMakoha Wellness",
+    "expected_skus": ["APG-200547", "APG-202A-S-30"],
+    "notes": "Customer explicitly referenced APG-200547; APG-202A-S-30 was also recommended by sales rep"
+  },
+  {
+    "id": "case_02",
+    "source": "email 2.pdf",
+    "customer": "UNDIRTY",
+    "contact": "Ethan",
+    "email_subject": "2oz Aluminum Jar Inquiry",
+    "email_body": "Hello,\n\nWe are looking for 2oz (approximately 60ml) aluminum or metal screw-top jars for a new product line. Can you share what options you have available, along with pricing and MOQ?\n\nThanks,\nEthan\nUNDIRTY",
+    "expected_skus": ["APG-AL18", "APG-210604", "APG-210823"],
+    "notes": "Customer wanted aluminum screw-top jars around 2oz / 60ml"
+  },
+  {
+    "id": "case_03",
+    "source": "email 3.pdf",
+    "customer": "Sanjna Cosmetics",
+    "contact": "Inthira",
+    "email_subject": "Lip Gloss Tubes with Doe Foot Applicator",
+    "email_body": "Hi APG team,\n\nWe are looking for lip gloss tubes with doe foot applicators for our cosmetics line. Could you please send us your available options with pricing and MOQ?\n\nBest,\nInthira\nSanjna Cosmetics",
+    "expected_skus": ["APG-420742-1", "APG-420266", "APG-420302", "APG-420393", "APG-420265"],
+    "notes": "Customer wanted lip gloss tubes with doe foot applicator wand"
+  },
+  {
+    "id": "case_04",
+    "source": "email 4.pdf",
+    "customer": "Skyn Iceland",
+    "contact": "Jose",
+    "email_subject": "General Product Catalog Request",
+    "email_body": "Hi,\n\nI'm reaching out on behalf of Skyn Iceland. We are interested in exploring packaging options for our skincare line. Could you please share your product catalog or brochure?\n\nThank you,\nJose\nSkyn Iceland",
+    "expected_skus": [],
+    "notes": "General catalog inquiry — no specific product requested; skip in recall metrics"
+  },
+  {
+    "id": "case_05",
+    "source": "email 5.pdf",
+    "customer": "Home & Body Co",
+    "contact": "Keiry",
+    "email_subject": "Fine Mist Sprayer and Pump Samples Request",
+    "email_body": "Hello,\n\nWe are interested in fine mist sprayers and lotion pumps for our home and body care products. Could you send us samples of your HV fine mist sprayer options? We're looking at 24/410 and 28/410 neck sizes.\n\nThanks,\nKeiry\nHome & Body Co",
+    "expected_skus": ["APG-860104-A"],
+    "notes": "Customer requested HV fine mist sprayer samples; specific SKU range around APG-860104-A"
+  },
+  {
+    "id": "case_06",
+    "source": "email 6.pdf",
+    "customer": "Perfetto Perfumes",
+    "contact": "Michele",
+    "email_subject": "Square Glass Bottles 30ml/50ml + Pumps",
+    "email_body": "Good morning,\n\nWe are looking for square glass bottles in amber and black finishes, in 30ml and 50ml sizes, for our perfume and skincare line. We also need compatible lotion pumps in 18/400 and 20/400 neck sizes.\n\nPlease provide pricing, MOQ, and lead times.\n\nBest regards,\nMichele\nPerfetto Perfumes",
+    "expected_skus": ["APG-BT-R-18/410-30", "APG-PBB-30-AB", "APG-230285", "APG-210762-2", "APG-222025", "APG-230428", "APG-211016"],
+    "notes": "Customer asked for square glass bottles (30ml/50ml, amber/black) + 18/400 and 20/400 pumps"
+  },
+  {
+    "id": "case_07",
+    "source": "email 7.pdf",
+    "customer": "PFB Vanish",
+    "contact": "Alexis",
+    "email_subject": "Inquiry on APG-230274 Round Glass Bottle",
+    "email_body": "Hi,\n\nI recently came across your APG-230274 round glass bottle and we're very interested in using it for our skincare line. Could you please share pricing, MOQ, and available sizes?\n\nThank you,\nAlexis\nPFB Vanish",
+    "expected_skus": ["APG-230274"],
+    "notes": "Customer explicitly named APG-230274 round glass skincare bottle"
+  },
+  {
+    "id": "case_08",
+    "source": "email 8.pdf",
+    "customer": "Lush Fresh Handmade Cosmetics",
+    "contact": "Gary",
+    "email_subject": "Fine Mist Sprayers and PCR Lotion Pump Inquiry",
+    "email_body": "Hello,\n\nWe are looking for fine mist sprayers in 20/410 and 24/410 neck sizes, as well as a lotion pump in 20/410 made with PCR (post-consumer recycled) material. Can you share available options with pricing and MOQ?\n\nBest,\nGary\nLush Fresh Handmade Cosmetics",
+    "expected_skus": ["APG-860104-A", "APG-855024", "APG-860044", "APG-860043", "APG-860052"],
+    "notes": "Customer asked for fine mist sprayers (20/410, 24/410) and PCR lotion pump (20/410)"
+  },
+  {
+    "id": "case_09",
+    "source": "email 9.pdf",
+    "customer": "Thrive Made Simple",
+    "contact": "Kane",
+    "email_subject": "Refillable Deodorant Case Inquiry",
+    "email_body": "Hi there,\n\nWe are exploring refillable deodorant case packaging options for our natural deodorant. Could you let us know what options you carry?\n\nThanks,\nKane\nThrive Made Simple",
+    "expected_skus": [],
+    "notes": "Customer ultimately decided not to proceed — lost opportunity; skip in recall metrics"
+  },
+  {
+    "id": "case_11",
+    "source": "email 11.pdf",
+    "customer": "The Cary Company",
+    "contact": "Lexi Donnelly",
+    "email_subject": "APG-40D-450-WT PET, Foamer Bottle",
+    "email_body": "Good morning,\n\nI am looking to receive more information on part# APG-40D-450-WT PET, Foamer Bottle, as well as recommendations for a compatible foamer pump cap.\n\nCould you please assist with pricing, lead times, MOQ, case/pallet quantities and dimensions, and FOB?\n\nThank you,\nLexi Donnelly\nProduct Specialist\nThe Cary Company",
+    "expected_skus": ["APG-40D-450-WT", "APG-230442"],
+    "notes": "Customer explicitly requested APG-40D-450-WT; APG-230442 (475ml foamer) was the alternative that was ultimately ordered after APG-40D-450-WT had production issues. Both are valid expected results."
+  }
+]

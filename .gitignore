@@ -24,3 +24,5 @@ backend/data/*.xlsx
 .DS_Store
 .idea/
 .vscode/
+.vercel
+backend/.env.neon
