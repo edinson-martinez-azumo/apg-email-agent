@@ -90,6 +90,16 @@
     "notes": "Customer ultimately decided not to proceed — lost opportunity; skip in recall metrics"
   },
   {
+    "id": "case_10",
+    "source": "email 10.pdf",
+    "customer": "Perfetto Perfumes",
+    "contact": "Michele Pavesi",
+    "email_subject": "Square Glass Bottles + Cosmetic Pumps Inquiry",
+    "email_body": "Good morning,\n\nI need squared bottles (black glass) and cosmetic pumps in 18/400 and 20/400 neck sizes, in 30ml and 50ml sizes. Initial order quantity: 10k units. No decoration needed.\n\nPlease provide pricing, MOQ, and lead times.\n\nBest regards,\nMichele Pavesi\nOwner\nPerfetto Perfumes",
+    "expected_skus": ["APG-BT-R-18/410-30", "APG-30ML", "APG-BT-30-B-AB-18", "APG-230285", "APG-210762-2", "APG-222025", "APG-230428", "APG-211016", "APG-B-S-50-BB", "APG-BT-50-B-AB-18"],
+    "notes": "Same customer as case_06 (Perfetto Perfumes / Michele) but earlier inquiry stage. Email 10 thread included additional SKUs not in case_06: APG-30ML, APG-BT-30-B-AB-18, APG-B-S-50-BB, APG-BT-50-B-AB-18. Square black glass bottles 30ml/50ml + pumps 18/400 and 20/400."
+  },
+  {
     "id": "case_11",
     "source": "email 11.pdf",
     "customer": "The Cary Company",

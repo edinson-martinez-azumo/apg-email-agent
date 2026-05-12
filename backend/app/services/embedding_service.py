@@ -28,22 +28,30 @@ Rules:
 Customer email:
 """
 
-ATTR_PROMPT = """Extract structured product specs from this customer email. Return ONLY valid JSON, nothing else.
+SEGMENT_PROMPT = """Extract all distinct product types being requested in this customer email.
+Return ONLY valid JSON — a list of objects, one per product type.
 
-Fields (use null if not mentioned):
-- "capacity": capacity normalized to ml as a string (e.g. "30ml", "473ml"). Convert oz: 1oz=30ml, 2oz=60ml, 8oz=237ml, 16oz=473ml.
-- "neck_sizes": list of closure sizes in XX/YYY format (e.g. ["20/410", "24/410"]). null if none mentioned.
-- "material": primary material if explicitly stated (e.g. "PET", "PP", "glass", "aluminum", "PCR", "recycled"). null if not stated.
+Each object:
+- "description": concise phrase describing what the customer wants (used as search query)
+- "type": container/closure category (e.g. "fine mist sprayer", "lotion pump", "glass bottle", "airless pump")
+- "capacity": capacity in ml as string (e.g. "30ml", "473ml"). Convert oz: 1oz=30ml, 2oz=60ml, 8oz=237ml, 16oz=473ml. null if not mentioned.
+- "neck_sizes": list of neck sizes in XX/YYY format (e.g. ["20/410","24/410"]). null if none mentioned.
+- "material": primary material if explicitly stated (e.g. "PCR", "PET", "glass", "aluminum"). null if not stated.
+
+Rules:
+- One object per distinct product category
+- Do NOT split by size variants (30ml + 50ml same product type = one object)
+- Maximum 4 objects. If single product type, return list with one object.
 
 Examples:
-Input: "looking for 16oz foaming hand soap bottle"
-Output: {"capacity": "473ml", "neck_sizes": null, "material": null}
+Input: "fine mist sprayers 20/410 and 24/410, also lotion pump PCR 20/410"
+Output: [{"description":"fine mist sprayer 20/410 24/410","type":"fine mist sprayer","capacity":null,"neck_sizes":["20/410","24/410"],"material":null},{"description":"lotion pump PCR 20/410","type":"lotion pump","capacity":null,"neck_sizes":["20/410"],"material":"PCR"}]
 
-Input: "fine mist sprayers 20/410 and 24/410, lotion pump 20/410 PCR"
-Output: {"capacity": null, "neck_sizes": ["20/410", "24/410"], "material": "PCR"}
+Input: "square glass bottles amber 30ml 50ml, compatible pumps 18/400 and 20/400"
+Output: [{"description":"square glass bottle amber 30ml 50ml","type":"glass bottle","capacity":null,"neck_sizes":null,"material":"glass"},{"description":"lotion pump 18/400 20/400","type":"lotion pump","capacity":null,"neck_sizes":["18/400","20/400"],"material":null}]
 
-Input: "30ml PET airless pump bottle"
-Output: {"capacity": "30ml", "neck_sizes": null, "material": "PET"}
+Input: "2oz aluminum screw-top jar"
+Output: [{"description":"aluminum screw-top jar 2oz 60ml","type":"jar","capacity":"60ml","neck_sizes":null,"material":"aluminum"}]
 
 Customer email:
 """
@@ -74,19 +82,28 @@ async def _enrich_query(raw_query: str) -> str:
     return f'{raw_query} {terms}'
 
 
-async def _extract_attrs(raw_query: str) -> dict:
-    """Extract structured specs (capacity, neck_sizes, material) from customer email."""
+async def _segment_products(raw_query: str) -> list[dict]:
+    """Segment customer email into distinct product requests, each with its own attributes."""
     import json
     async_client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
     response = await async_client.messages.create(
         model='claude-haiku-4-5-20251001',
-        max_tokens=80,
-        messages=[{'role': 'user', 'content': f'{ATTR_PROMPT}{raw_query}'}],
+        max_tokens=300,
+        messages=[{'role': 'user', 'content': f'{SEGMENT_PROMPT}{raw_query}'}],
     )
     try:
-        return json.loads(response.content[0].text.strip())
+        raw = response.content[0].text.strip()
+        # Strip markdown code fences if present
+        if raw.startswith('```'):
+            raw = raw.split('```', 2)[1]
+            if raw.startswith('json'):
+                raw = raw[4:]
+        result = json.loads(raw.strip())
+        if isinstance(result, list) and result:
+            return result
+        return [{'description': raw_query, 'capacity': None, 'neck_sizes': None, 'material': None}]
     except Exception:
-        return {}
+        return [{'description': raw_query, 'capacity': None, 'neck_sizes': None, 'material': None}]
 
 
 def _build_attr_filter(attrs: dict, exclude_skus: set[str]) -> tuple[str, dict]:
@@ -116,6 +133,35 @@ def _build_attr_filter(attrs: dict, exclude_skus: set[str]) -> tuple[str, dict]:
     if not parts:
         return '', {}
     return ' AND '.join(parts), params
+
+
+async def _expand_variants(candidates: list[dict], db: AsyncSession, already_seen: set[str]) -> list[dict]:
+    """For top candidates, fetch SKU variants not already in results.
+    Expands both children (sku LIKE 'BASE-%') and siblings (strip one suffix level)."""
+    if not candidates:
+        return []
+
+    prefixes: set[str] = set()
+    for c in candidates[:12]:
+        sku = c['sku']
+        prefixes.add(sku)  # direct children: APG-XXX → APG-XXX-*
+        # Sibling expansion: strip last segment if short (variant indicator)
+        parts = sku.rsplit('-', 1)
+        if len(parts) == 2 and len(parts[1]) <= 3 and parts[1].replace('/', '').isalnum():
+            prefixes.add(parts[0])  # base → APG-XXX-* (all siblings)
+
+    like_clauses = [f'sku LIKE :p{i}' for i in range(len(prefixes))]
+    params = {f'p{i}': f'{prefix}-%' for i, prefix in enumerate(sorted(prefixes))}
+
+    result = await db.execute(text(f"""
+        SELECT sku, title, type, materials, moq, capacities,
+               price_base, price_10k, price_25k, price_50k, price_100k, in_stock, image_url
+        FROM product_embeddings
+        WHERE ({' OR '.join(like_clauses)})
+        LIMIT 40
+    """), params)
+    rows = result.mappings().all()
+    return [_row_to_dict(r) for r in rows if r['sku'] not in already_seen]
 
 
 async def _rerank(query: str, candidates: list[dict], top_k: int) -> list[dict]:
@@ -198,12 +244,11 @@ async def search_products(query: str, db: AsyncSession, top_k: int = 8) -> list[
 
     import asyncio as _asyncio
 
-    exact_hits, (enriched, attrs) = await _asyncio.gather(
+    exact_hits, segments = await _asyncio.gather(
         _fetch_exact_skus(query, db),
-        _asyncio.gather(_enrich_query(query), _extract_attrs(query)),
+        _segment_products(query),
     )
     exact_skus = {p['sku'] for p in exact_hits}
-    query_embedding = await embed(enriched)
     candidates_k = top_k * CANDIDATES_MULTIPLIER
 
     if has_metadata:
@@ -219,28 +264,44 @@ async def search_products(query: str, db: AsyncSession, top_k: int = 8) -> list[
             ORDER BY score DESC
             LIMIT :k
         """
-        base_params = {'vec': str(query_embedding), 'q': query, 'k': candidates_k}
 
-        attr_filter, attr_params = _build_attr_filter(attrs, exact_skus)
-        if attr_filter:
-            filtered_sql = text(base_sql.format(where=f'WHERE {attr_filter}'))
-            filtered_result = await db.execute(filtered_sql, {**base_params, **attr_params})
-            filtered_rows = filtered_result.mappings().all()
-        else:
-            filtered_rows = []
+        async def _search_segment(seg: dict) -> list:
+            enriched = await _enrich_query(seg.get('description') or query)
+            seg_embedding = await embed(enriched)
+            base_params = {'vec': str(seg_embedding), 'q': seg.get('description') or query, 'k': candidates_k}
+            attrs = {k: seg.get(k) for k in ('capacity', 'neck_sizes', 'material')}
+            attr_filter, attr_params = _build_attr_filter(attrs, exact_skus)
+            if attr_filter:
+                filtered_result = await db.execute(
+                    text(base_sql.format(where=f'WHERE {attr_filter}')),
+                    {**base_params, **attr_params},
+                )
+                filtered_rows = filtered_result.mappings().all()
+            else:
+                filtered_rows = []
+            if len(filtered_rows) >= top_k:
+                return list(filtered_rows)
+            unfiltered_result = await db.execute(text(base_sql.format(where='')), base_params)
+            return list(unfiltered_result.mappings().all())
 
-        # Fall back to unfiltered if attr filter is too restrictive
-        if len(filtered_rows) >= top_k:
-            rows = filtered_rows
-        else:
-            unfiltered_result = await db.execute(
-                text(base_sql.format(where='')), base_params
-            )
-            rows = unfiltered_result.mappings().all()
+        # AsyncSession is not safe for concurrent use — run segments sequentially
+        segment_rows = []
+        for seg in segments:
+            segment_rows.append(await _search_segment(seg))
 
-        candidates = [_row_to_dict(r) for r in rows if r['sku'] not in exact_skus]
-        merged = exact_hits + candidates
-        return await _rerank(enriched, merged, top_k)
+        # Merge and dedup across segments, preserving order (first segment wins on ties)
+        seen = set(exact_skus)
+        candidates = []
+        for rows in segment_rows:
+            for r in rows:
+                d = _row_to_dict(r)
+                if d['sku'] not in seen:
+                    seen.add(d['sku'])
+                    candidates.append(d)
+
+        variants = await _expand_variants(candidates, db, seen)
+        merged = exact_hits + candidates + variants
+        return await _rerank(query, merged, top_k)
     else:
         # Pre-migration fallback: cosine only + DataFrame merge
         from sqlalchemy import select as sa_select
