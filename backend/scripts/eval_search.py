@@ -33,31 +33,42 @@ DATA_FILE = os.path.join(os.path.dirname(__file__), '..', 'data', 'eval_dataset.
 def _parse_args():
     mode = 'embedding'
     top_k = 12
-    for arg in sys.argv[1:]:
-        if arg == '--mode' or arg.startswith('--mode='):
-            if '=' in arg:
-                mode = arg.split('=', 1)[1]
-            else:
-                idx = sys.argv.index(arg)
-                if idx + 1 < len(sys.argv):
-                    mode = sys.argv[idx + 1]
+    filter_id = None
+    args = sys.argv[1:]
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == '--mode' and i + 1 < len(args):
+            mode = args[i + 1]; i += 2
+        elif arg.startswith('--mode='):
+            mode = arg.split('=', 1)[1]; i += 1
+        elif arg == '--k' and i + 1 < len(args):
+            top_k = int(args[i + 1]); i += 2
         elif arg.startswith('--k='):
-            top_k = int(arg.split('=', 1)[1])
-        elif arg == '--k':
-            idx = sys.argv.index(arg)
-            if idx + 1 < len(sys.argv):
-                top_k = int(sys.argv[idx + 1])
-    return mode, top_k
+            top_k = int(arg.split('=', 1)[1]); i += 1
+        elif arg == '--id' and i + 1 < len(args):
+            filter_id = args[i + 1]; i += 2
+        elif arg.startswith('--id='):
+            filter_id = arg.split('=', 1)[1]; i += 1
+        else:
+            i += 1
+    return mode, top_k, filter_id
 
 
 async def run() -> None:
-    mode, top_k = _parse_args()
+    mode, top_k, filter_id = _parse_args()
     if mode not in ('keyword', 'embedding'):
         print(f"Unknown mode '{mode}'. Use --mode keyword or --mode embedding.")
         sys.exit(1)
 
     with open(DATA_FILE) as f:
         cases = json.load(f)
+
+    if filter_id:
+        cases = [c for c in cases if c['id'] == filter_id]
+        if not cases:
+            print(f"No case with id '{filter_id}'")
+            sys.exit(1)
 
     engine = create_async_engine(settings.database_url, poolclass=NullPool)
     async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)

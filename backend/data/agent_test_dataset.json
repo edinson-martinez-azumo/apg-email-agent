@@ -11,13 +11,13 @@
   },
   {
     "id": "agent_02",
-    "scenario": "16oz foaming hand soap bottle with pump — known failure",
-    "customer": "CleanCo Distributors",
-    "contact": "Lexi",
-    "email_subject": "16oz Foaming Hand Soap Bottle",
-    "email_body": "Hello,\n\nWe received an inquiry from a customer for a 16oz foaming hand soap bottle with pump. Quantity 10,000 units.\n\nPlease share available options with pricing and MOQ.\n\nThank you,\nLexi\nCleanCo Distributors",
-    "expected_skus": ["APG-230442", "APG-230401", "APG-230402"],
-    "expected_agent_behavior": "Should find foamer pump bottle ~475ml. Known weakness: search finds 16oz bottles without foam pump instead of foam pump bottles at 475ml equivalent"
+    "scenario": "Multi-segment: amber glass dropper 30ml 18/410 + PP deodorant stick 75ml bottom fill",
+    "customer": "Botanica Co",
+    "contact": "Sophie",
+    "email_subject": "Samples Request — Dropper Bottles and Deodorant Sticks",
+    "email_body": "Hi,\n\nWe need samples of two products:\n1. Amber glass dropper bottles 30ml with 18/410 neck finish for essential oils\n2. PP bottom-fill deodorant stick tubes 75ml for natural deodorant\n\nQuantity: 10,000 units each. Please share options and pricing.\n\nThank you,\nSophie\nBotanica Co",
+    "expected_skus": ["APG-DD-30-AB", "APG-TS01-30", "APG-BT-R-18/410-30", "APG-500029", "APG-DA-75A", "APG-500031", "APG-500125-FD2"],
+    "expected_agent_behavior": "SEGMENTATION TEST: should split into 2 segments (amber glass dropper 30ml 18/410 + PP deodorant stick 75ml bottom fill). Draft should list both product types separately. Recall should be 1.00."
   },
   {
     "id": "agent_03",
