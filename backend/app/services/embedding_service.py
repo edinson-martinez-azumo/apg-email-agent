@@ -22,6 +22,7 @@ container type, closure type, material, capacity/size, application, end use.
 
 Rules:
 - Translate intent to catalog terms: "single-handed in shower" → "flip-top cap", "TSA rules" → "100ml travel size", "squeeze" → "tottle squeeze"
+- Vocabulary mappings: "foaming soap/hand soap" → "foamer pump bottle", "foam pump" → "foamer pump", "foaming dispenser" → "foamer pump bottle"
 - Include both the inferred closure AND the container type
 - At most 15 terms. No explanation, no punctuation beyond spaces.
 
@@ -33,7 +34,7 @@ Return ONLY valid JSON — a list of objects, one per product type.
 
 Each object:
 - "description": concise phrase describing what the customer wants (used as search query)
-- "type": container/closure category (e.g. "fine mist sprayer", "lotion pump", "glass bottle", "airless pump")
+- "type": container/closure category (e.g. "fine mist sprayer", "lotion pump", "glass bottle", "airless pump", "foamer pump bottle")
 - "capacity": capacity in ml as string (e.g. "30ml", "473ml"). Convert oz: 1oz=30ml, 2oz=60ml, 8oz=237ml, 16oz=473ml. null if not mentioned.
 - "neck_sizes": list of neck sizes in XX/YYY format (e.g. ["20/410","24/410"]). null if none mentioned.
 - "material": primary material if explicitly stated (e.g. "PCR", "PET", "glass", "aluminum"). null if not stated.
@@ -42,6 +43,7 @@ Rules:
 - One object per distinct product category
 - Do NOT split by size variants (30ml + 50ml same product type = one object)
 - Maximum 4 objects. If single product type, return list with one object.
+- Vocabulary: "foaming soap bottle", "foaming hand soap bottle", "foam pump bottle" → type must be "foamer pump bottle". Never map these to generic bottle types.
 
 Examples:
 Input: "fine mist sprayers 20/410 and 24/410, also lotion pump PCR 20/410"
@@ -52,6 +54,9 @@ Output: [{"description":"square glass bottle amber 30ml 50ml","type":"glass bott
 
 Input: "2oz aluminum screw-top jar"
 Output: [{"description":"aluminum screw-top jar 2oz 60ml","type":"jar","capacity":"60ml","neck_sizes":null,"material":"aluminum"}]
+
+Input: "16oz foaming hand soap bottle with pump quantity 10000"
+Output: [{"description":"foamer pump bottle 473ml foaming soap dispenser","type":"foamer pump bottle","capacity":"473ml","neck_sizes":null,"material":null}]
 
 Customer email:
 """
@@ -106,6 +111,19 @@ async def _segment_products(raw_query: str) -> list[dict]:
         return [{'description': raw_query, 'capacity': None, 'neck_sizes': None, 'material': None}]
 
 
+_GENERIC_TYPE_WORDS = frozenset({
+    'bottle', 'pump', 'jar', 'tube', 'cap', 'container', 'dispenser', 'pack', 'package',
+})
+
+
+def _type_keyword(product_type: str) -> str | None:
+    """Extract the most distinctive word from a product type string."""
+    for word in (product_type or '').lower().split():
+        if word not in _GENERIC_TYPE_WORDS:
+            return word
+    return None
+
+
 def _build_attr_filter(attrs: dict, exclude_skus: set[str]) -> tuple[str, dict]:
     """Build SQL WHERE fragment and params from extracted attrs. Returns ('', {}) if no attrs."""
     parts = []
@@ -133,6 +151,14 @@ def _build_attr_filter(attrs: dict, exclude_skus: set[str]) -> tuple[str, dict]:
     if not parts:
         return '', {}
     return ' AND '.join(parts), params
+
+
+def _build_type_filter(product_type: str) -> tuple[str, dict]:
+    """Build a type-keyword-only filter for use as strict-filter fallback."""
+    kw = _type_keyword(product_type)
+    if not kw:
+        return '', {}
+    return '(search_text ILIKE :type_kw OR title ILIKE :type_kw)', {'type_kw': f'%{kw}%'}
 
 
 async def _expand_variants(candidates: list[dict], db: AsyncSession, already_seen: set[str]) -> list[dict]:
@@ -168,8 +194,22 @@ async def _rerank(query: str, candidates: list[dict], top_k: int) -> list[dict]:
     """Rerank candidates using Cohere reranker. Returns top_k best matches."""
     if len(candidates) <= top_k:
         return candidates
+    def _cap_with_oz(cap: str) -> str:
+        """Append oz equivalent to ml capacities so the reranker can match oz queries."""
+        if not cap:
+            return cap
+        ml_vals = re.findall(r'\b(\d+)ml\b', cap, re.IGNORECASE)
+        if not ml_vals:
+            return cap
+        parts = []
+        for ml_str in ml_vals:
+            ml = int(ml_str)
+            oz = ml / 29.574
+            parts.append(f'{ml}ml (≈{oz:.0f}oz)')
+        return cap + ' / ' + ', '.join(parts)
+
     documents = [
-        f"SKU: {c['sku']}. {c['title']}. Capacity: {c['capacities']}. Materials: {c['materials']}. Type: {c['type']}. MOQ: {c['moq']}."
+        f"SKU: {c['sku']}. {c['title']}. Capacity: {_cap_with_oz(c['capacities'])}. Materials: {c['materials']}. Type: {c['type']}. MOQ: {c['moq']}."
         for c in candidates
     ]
     response = await _get_cohere().rerank(
@@ -281,6 +321,18 @@ async def search_products(query: str, db: AsyncSession, top_k: int = 12) -> list
                 filtered_rows = []
             if len(filtered_rows) >= top_k:
                 return list(filtered_rows)
+            # Strict filter was active but returned nothing — try type-keyword filter before going
+            # fully unfiltered. Catches oz→ml rounding mismatches (e.g. 16oz=473ml vs 475ml).
+            if attr_filter and len(filtered_rows) == 0 and seg.get('type'):
+                type_f, type_p = _build_type_filter(seg['type'])
+                if type_f:
+                    type_result = await db.execute(
+                        text(base_sql.format(where=f'WHERE {type_f}')),
+                        {**base_params, **type_p, 'k': candidates_k * 4},
+                    )
+                    type_rows = type_result.mappings().all()
+                    if len(type_rows) >= top_k:
+                        return list(type_rows)
             unfiltered_result = await db.execute(text(base_sql.format(where='')), base_params)
             return list(unfiltered_result.mappings().all())
 

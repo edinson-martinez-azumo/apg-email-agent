@@ -1,0 +1,102 @@
+[
+  {
+    "id": "agent_01",
+    "scenario": "Amber glass dropper bottles 30ml 18/410",
+    "customer": "Natural Remedies Co",
+    "contact": "Sofia",
+    "email_subject": "Amber Glass Dropper Bottles 30ml",
+    "email_body": "Hi,\n\nWe need amber glass dropper bottles in 30ml with 18/410 neck for our essential oils line. Looking for 5,000 units to start.\n\nPlease send pricing and MOQ.\n\nThanks,\nSofia\nNatural Remedies Co",
+    "expected_skus": ["APG-DD-30-AB", "APG-BT-R-18/410-30", "APG-TS01-30", "APG-30ML", "APG-BR002-30ML", "APG-230176", "APG-230174", "APG-230173", "APG-230172", "APG-230241", "APG-B-B-30", "APG-01-30-AB"],
+    "expected_agent_behavior": "Should find multiple amber glass 30ml dropper options, mention 18/410 neck, ask about closure preference (dropper vs spray)"
+  },
+  {
+    "id": "agent_02",
+    "scenario": "16oz foaming hand soap bottle with pump — known failure",
+    "customer": "CleanCo Distributors",
+    "contact": "Lexi",
+    "email_subject": "16oz Foaming Hand Soap Bottle",
+    "email_body": "Hello,\n\nWe received an inquiry from a customer for a 16oz foaming hand soap bottle with pump. Quantity 10,000 units.\n\nPlease share available options with pricing and MOQ.\n\nThank you,\nLexi\nCleanCo Distributors",
+    "expected_skus": ["APG-230442", "APG-230401", "APG-230402"],
+    "expected_agent_behavior": "Should find foamer pump bottle ~475ml. Known weakness: search finds 16oz bottles without foam pump instead of foam pump bottles at 475ml equivalent"
+  },
+  {
+    "id": "agent_03",
+    "scenario": "50ml airless pump bottle all-plastic PP",
+    "customer": "Bloom Skincare",
+    "contact": "Rachel",
+    "email_subject": "50ml Airless Pump Bottle for Face Serum",
+    "email_body": "Hi APG team,\n\nWe are developing a new face serum and need a 50ml airless pump bottle in all-plastic PP. MOQ around 10K units.\n\nWhat options do you have? Please include pricing.\n\nBest,\nRachel\nBloom Skincare",
+    "expected_skus": ["APG-1906A-50ml", "APG-200144", "APG-200499", "APG-200613", "APG-2101C-50ML", "APG-AIRLESS-50ML", "APG-609A-50ML", "APG-D2-50", "APG-D1-50", "APG-225A-50", "APG-RN-50ml", "APG-200530", "APG-204-50ML"],
+    "expected_agent_behavior": "Should find several all-plastic airless pump options at 50ml, mention output/dosage specs and MOQ"
+  },
+  {
+    "id": "agent_04",
+    "scenario": "PCR lotion pump 24/410 — sustainability focus",
+    "customer": "EcoBeauty Brand",
+    "contact": "Marcus",
+    "email_subject": "PCR Lotion Pump 24/410",
+    "email_body": "Hello,\n\nWe are looking for lotion pumps in 24/410 made with post-consumer recycled (PCR) material for our sustainable skincare line. Quantity: 25,000 units.\n\nCan you share available PCR pump options with pricing?\n\nBest regards,\nMarcus\nEcoBeauty Brand",
+    "expected_skus": ["APG-B8-24/410-50%", "APG-N20-J24/410S", "APG-315-17-100%PCR", "APG-202A-24/410-PCR", "APG-903-03A-PCR"],
+    "expected_agent_behavior": "Should surface PCR-specific pumps, mention % PCR content, note sustainability certifications if available"
+  },
+  {
+    "id": "agent_05",
+    "scenario": "Aluminum deodorant stick tube 75ml bottom fill",
+    "customer": "Pure Body Labs",
+    "contact": "Dana",
+    "email_subject": "Aluminum Deodorant Stick Tubes 75ml",
+    "email_body": "Hi,\n\nWe need aluminum deodorant stick tubes around 75ml capacity with bottom fill and cap. Looking at 20,000 units.\n\nPlease share options, pricing, and lead times.\n\nThank you,\nDana\nPure Body Labs",
+    "expected_skus": ["APG-500051", "APG-500031", "APG-DA-75A", "APG-500029", "APG-500117", "APG-500178", "APG-DC-75(A)", "APG-500125-FD2", "APG-500125-FD3"],
+    "expected_agent_behavior": "Should find deodorant stick options at 75ml, clarify if aluminum or PP (some results are PP), mention bottom-fill compatibility"
+  },
+  {
+    "id": "agent_06",
+    "scenario": "BUG: multi-product segmentation — fine mist 24/410 + airless 30/50ml",
+    "customer": "Lumière Beauty",
+    "contact": "Priya",
+    "email_subject": "Fine Mist Sprayer and Airless Bottle Inquiry",
+    "email_body": "Hi,\n\nWe need fine mist sprayers in 24/410 for a toner, and airless pump bottles in 30ml and 50ml for a serum. Quantity 10,000 units each.\n\nPlease share options and pricing.\n\nBest,\nPriya\nLumière Beauty",
+    "expected_skus": ["APG-603-01-24/410-R", "APG-8-22-24/410-CR", "APG-M6050-24/410", "APG-860160", "APG-200461", "APG-200280", "APG-200613", "APG-1906A-50ml", "APG-200019", "APG-200022"],
+    "expected_agent_behavior": "BUG TEST: segmentation should split into 2 segments (fine mist 24/410 + airless 30/50ml). Draft should list both product types separately. If only one type appears, segmentation failed."
+  },
+  {
+    "id": "agent_07",
+    "scenario": "BUG: oz to ml conversion — 8oz lotion pump bottle 24/410",
+    "customer": "Bare Essentials",
+    "contact": "Tom",
+    "email_subject": "8oz Lotion Pump Bottle 24/410",
+    "email_body": "Hello,\n\nWe need an 8oz lotion pump bottle in HDPE or PET with 24/410 neck for a hand lotion. Quantity 20,000 units.\n\nPlease share available options.\n\nThanks,\nTom\nBare Essentials",
+    "expected_skus": ["APG-230433", "APG-230433-1", "APG-230381", "APG-230183", "APG-210267", "APG-230378"],
+    "expected_agent_behavior": "BUG TEST: 8oz = 237ml. Haiku should convert oz to ml in segment capacity. Draft should mention ~250ml bottles (closest to 237ml). If only 500ml+ appears, capacity conversion failed."
+  },
+  {
+    "id": "agent_08",
+    "scenario": "BUG: explicit SKU mention + compatible product request",
+    "customer": "Glow Lab",
+    "contact": "Nina",
+    "email_subject": "APG-200547 Inquiry + Compatible Pump",
+    "email_body": "Hi,\n\nWe are interested in APG-200547 fine mist sprayer airless bottle. We also need a compatible lotion pump for the same bottle neck size. Please share pricing for both.\n\nThank you,\nNina\nGlow Lab",
+    "expected_skus": ["APG-200547", "APG-222047", "APG-222088", "APG-200575", "APG-220066"],
+    "expected_agent_behavior": "BUG TEST: APG-200547 must appear at rank 1 (exact hit injection). Compatible pump should also appear. If APG-200547 is not rank 1, _fetch_exact_skus broke."
+  },
+  {
+    "id": "agent_09",
+    "scenario": "BUG: multiple neck sizes in one query — 20/410 and 24/410 lotion pumps",
+    "customer": "Derma Solutions",
+    "contact": "Carlos",
+    "email_subject": "Lotion Pumps 20/410 and 24/410",
+    "email_body": "Hello,\n\nWe need lotion pumps in both 20/410 and 24/410 neck sizes for our skincare line. Quantity 50,000 units total.\n\nPlease share all available options with pricing.\n\nBest regards,\nCarlos\nDerma Solutions",
+    "expected_skus": ["APG-N20-B-24", "APG-315-18-24/410", "APG-327-05-24/410", "APG-N20-L24/410S", "APG-24/410 ALU", "APG-N20-J24 410"],
+    "expected_agent_behavior": "BUG TEST: _build_attr_filter should produce OR clause for 20/410 and 24/410. Draft should mention both neck sizes. If only 24/410 results appear, the OR filter for multiple neck sizes is not working."
+  },
+  {
+    "id": "agent_10",
+    "scenario": "BUG: high volume inquiry — Claude MOQ logic with large quantities",
+    "customer": "Global Packaging Inc",
+    "contact": "David",
+    "email_subject": "Amber Glass Dropper Bottles — High Volume",
+    "email_body": "Hi,\n\nWe need amber glass dropper bottles 30ml 18/410 for a very large order — approximately 500,000 to 1,000,000 units annually.\n\nPlease share pricing tiers and available SKUs.\n\nThank you,\nDavid\nGlobal Packaging Inc",
+    "expected_skus": ["APG-DD-30-AB", "APG-BT-R-18/410-30", "APG-TS01-30", "APG-30ML", "APG-230172", "APG-230173", "APG-230174", "APG-230176", "APG-230241"],
+    "expected_agent_behavior": "BUG TEST: quantity (500K-1M) is well above MOQ so Claude should NOT mention MOQ. Draft should go straight to products and mention pricing tiers if available. If Claude still says 'our MOQ is 10,000', the quantity-vs-MOQ logic failed."
+  }
+]

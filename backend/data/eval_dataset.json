@@ -100,6 +100,16 @@
     "notes": "Same customer as case_06 (Perfetto Perfumes / Michele) but earlier inquiry stage. Email 10 thread included additional SKUs not in case_06: APG-30ML, APG-BT-30-B-AB-18, APG-B-S-50-BB, APG-BT-50-B-AB-18. Square black glass bottles 30ml/50ml + pumps 18/400 and 20/400."
   },
   {
+    "id": "case_12",
+    "source": "real_email_pfb_oil_pump.pdf",
+    "customer": "PFB Vanish",
+    "contact": "Alexis Stubler",
+    "email_subject": "1oz Plastic Bottle with Oil Pump Inquiry",
+    "email_body": "Hello,\n\nI'm looking for a 1-ounce plastic bottle with an oil pump for a new product I'm developing. Could you please share your catalog or available options for this type of packaging?\n\nThank you!\n\nSincerely,\nAlexis Stubler\nLicensed Esthetician\nMarketing & Sales Manager | PFB Vanish",
+    "expected_skus": ["APG-230082", "APG-WK-20-9-20/410-WT", "APG-WK-20-9-20/410-BK", "APG-833309"],
+    "notes": "Customer asked for 1oz (~30ml) plastic bottle with oil pump. Rep asked for clarification (pump type + formula). Expected SKUs based on catalog analysis: APG-230082 (PP bottle + dip-tube pump 30ml), oil pump components APG-WK-20-9 series and APG-833309."
+  },
+  {
     "id": "case_11",
     "source": "email 11.pdf",
     "customer": "The Cary Company",

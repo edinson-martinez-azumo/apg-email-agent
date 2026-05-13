@@ -69,10 +69,15 @@ def _fmt_price(val: object) -> str:
         return ''
 
 
+_CAP_RE = re.compile(r'\b\d+\s*(?:ml|oz|cc|g|l)\b', re.IGNORECASE)
+
 def _has_confirmed_specs(p: dict) -> bool:
-    """Skip products whose key specs (capacity) cannot be confirmed from the data."""
+    """Skip products whose key specs (capacity) cannot be confirmed from the data.
+    Accepts if capacities field is populated OR capacity is readable from the title."""
     cap = str(p.get('capacities') or '').strip()
-    return bool(cap and cap not in ('nan', 'None', '-'))
+    if cap and cap not in ('nan', 'None', '-'):
+        return True
+    return bool(_CAP_RE.search(p.get('title') or ''))
 
 
 def _build_product_context(products: list[dict]) -> str:
