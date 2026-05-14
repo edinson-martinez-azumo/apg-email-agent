@@ -1,7 +1,13 @@
-import { useState, useEffect } from 'react'
-import MDEditor, { commands } from '@uiw/react-md-editor'
-import '@uiw/react-md-editor/markdown-editor.css'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useEditor, EditorContent } from '@tiptap/react'
+import StarterKit from '@tiptap/starter-kit'
+import Image from '@tiptap/extension-image'
+import { marked } from 'marked'
 import type { Email, Draft, ThreadEmail } from '@/types/api'
+import { ProductSearchPanel } from './ProductSearchPanel'
+import { PreviewModal } from './PreviewModal'
+import { useDebounce } from '@/hooks/useDebounce'
+import { draftsApi } from '@/lib/api'
 
 interface DraftEditorProps {
   email: Email
@@ -15,6 +21,47 @@ interface DraftEditorProps {
   isRegenerating: boolean
 }
 
+function toHtml(content: string): string {
+  if (content.trim().startsWith('<')) return content
+  return marked(content) as string
+}
+
+type ToolbarProps = { editor: ReturnType<typeof useEditor> }
+function Toolbar({ editor }: ToolbarProps) {
+  if (!editor) return null
+
+  const btn = (active: boolean, onClick: () => void, label: string) => (
+    <button
+      key={label}
+      onMouseDown={e => { e.preventDefault(); onClick() }}
+      className={`px-2 py-1 rounded text-xs font-medium transition-colors cursor-pointer ${
+        active
+          ? 'bg-primary/15 text-primary'
+          : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+      }`}
+      title={label}
+    >
+      {label}
+    </button>
+  )
+
+  return (
+    <div className="flex items-center gap-0.5 px-2 py-1.5 border-b border-primary/20 bg-primary/5 flex-wrap shrink-0">
+      {btn(editor.isActive('bold'),      () => editor.chain().focus().toggleBold().run(),      'B')}
+      {btn(editor.isActive('italic'),    () => editor.chain().focus().toggleItalic().run(),    'I')}
+      <span className="w-px h-4 bg-border mx-1" />
+      {btn(editor.isActive('heading', { level: 1 }), () => editor.chain().focus().toggleHeading({ level: 1 }).run(), 'H1')}
+      {btn(editor.isActive('heading', { level: 2 }), () => editor.chain().focus().toggleHeading({ level: 2 }).run(), 'H2')}
+      {btn(editor.isActive('heading', { level: 3 }), () => editor.chain().focus().toggleHeading({ level: 3 }).run(), 'H3')}
+      <span className="w-px h-4 bg-border mx-1" />
+      {btn(editor.isActive('bulletList'),  () => editor.chain().focus().toggleBulletList().run(),  '• List')}
+      {btn(editor.isActive('orderedList'), () => editor.chain().focus().toggleOrderedList().run(), '1. List')}
+      <span className="w-px h-4 bg-border mx-1" />
+      {btn(false, () => editor.chain().focus().setHorizontalRule().run(), '—')}
+    </div>
+  )
+}
+
 export function DraftEditor({
   email,
   draft,
@@ -26,26 +73,82 @@ export function DraftEditor({
   isSending,
   isRegenerating,
 }: DraftEditorProps) {
-  const [body, setBody] = useState(draft.edited_body ?? draft.body)
   const [saved, setSaved] = useState(false)
   const [discardConfirm, setDiscardConfirm] = useState(false)
+  const [html, setHtml] = useState(() => toHtml(draft.edited_body ?? draft.body))
+  const [editorReady, setEditorReady] = useState(false)
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null)
+  const [isPreviewing, setIsPreviewing] = useState(false)
+  const lastSavedRef = useRef(html)
+  const debouncedHtml = useDebounce(html, 1200)
 
+  const editor = useEditor({
+    extensions: [
+      StarterKit,
+      Image.configure({ inline: false, allowBase64: false }),
+    ],
+    content: html,
+    editorProps: {
+      attributes: { class: 'tiptap-editor' },
+    },
+    onFocus: () => setEditorReady(true),
+    onUpdate: ({ editor }) => {
+      setHtml(editor.getHTML())
+    },
+  })
+
+  // reset editor when draft changes (regenerate)
   useEffect(() => {
-    setBody(draft.edited_body ?? draft.body)
-  }, [draft.id, draft.edited_body, draft.body])
+    if (!editor) return
+    const newHtml = toHtml(draft.edited_body ?? draft.body)
+    editor.commands.setContent(newHtml)
+    setHtml(newHtml)
+    lastSavedRef.current = newHtml
+  }, [draft.id, draft.body, draft.edited_body]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleBlur = () => {
-    if (body !== (draft.edited_body ?? draft.body)) {
-      onSave(body)
+  // auto-save after debounce
+  useEffect(() => {
+    if (debouncedHtml && debouncedHtml !== lastSavedRef.current) {
+      onSave(debouncedHtml)
+      lastSavedRef.current = debouncedHtml
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
     }
-  }
+  }, [debouncedHtml]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const insertedSkus = useMemo(() => {
+    const matches = html.match(/\bAPG-[\w/\-]+/gi) ?? []
+    return new Set(matches.map(s => s.toUpperCase()))
+  }, [html])
+
+  const handlePreview = useCallback(async () => {
+    setIsPreviewing(true)
+    try {
+      const result = await draftsApi.preview(draft.id, html)
+      setPreviewHtml(result)
+    } finally {
+      setIsPreviewing(false)
+    }
+  }, [draft.id, html])
+
+  const handleInsertProduct = useCallback((productHtml: string) => {
+    if (!editor) return
+    editor.chain().focus().insertContent(productHtml).run()
+  }, [editor])
 
   return (
-    <div className="flex flex-col h-full gap-4">
+    <>
+    <div className="flex gap-4 h-full">
 
-        {/* Customer email + thread — top */}
+      {/* Left column — product search */}
+      <div className="w-80 xl:w-96 shrink-0 flex flex-col" style={{ height: '100%' }}>
+        <ProductSearchPanel onInsert={handleInsertProduct} editorReady={editorReady} insertedSkus={insertedSkus} />
+      </div>
+
+      {/* Right column */}
+      <div className="flex flex-col flex-1 min-w-0 gap-4">
+
+        {/* Customer email */}
         <div className="flex flex-col rounded-xl border border-border overflow-hidden shrink-0">
           <div className="px-4 py-2.5 bg-muted/50 border-b border-border flex items-center gap-2">
             <div className="h-2 w-2 rounded-full bg-muted-foreground/40" />
@@ -58,8 +161,7 @@ export function DraftEditor({
               </span>
             )}
           </div>
-          <div className="px-5 py-4 bg-card max-h-56 overflow-y-auto space-y-4">
-            {/* Previous thread emails */}
+          <div className="px-5 py-4 bg-card max-h-52 overflow-y-auto space-y-4">
             {email.thread?.map((msg: ThreadEmail) => (
               <div key={msg.id} className="pb-4 border-b border-border/50">
                 <div className="flex flex-wrap gap-x-6 gap-y-0.5 mb-2">
@@ -76,7 +178,6 @@ export function DraftEditor({
                 </pre>
               </div>
             ))}
-            {/* Current email */}
             <div>
               <div className="mb-2 flex flex-wrap gap-x-6 gap-y-1">
                 <p className="text-sm">
@@ -97,10 +198,8 @@ export function DraftEditor({
           </div>
         </div>
 
-        {/* MD Editor — below, takes remaining space */}
+        {/* TipTap editor */}
         <div className="flex flex-col rounded-xl border border-primary/40 overflow-hidden flex-1 min-h-0">
-
-          {/* Header */}
           <div className="px-4 py-2.5 bg-primary/5 border-b border-primary/20 flex items-center justify-between shrink-0">
             <div className="flex items-center gap-2">
               <div className="h-2 w-2 rounded-full bg-primary" />
@@ -117,84 +216,86 @@ export function DraftEditor({
             </div>
           </div>
 
-          {/* Editor */}
-          <div className="flex-1 min-h-0" onBlur={handleBlur} data-color-mode="light">
-            <MDEditor
-              value={body}
-              onChange={(v) => setBody(v ?? '')}
-              preview="live"
-              height="100%"
-              style={{ height: '100%' }}
-              visibleDragbar={false}
-              commands={[
-                commands.bold,
-                commands.italic,
-                commands.divider,
-                commands.unorderedListCommand,
-                commands.orderedListCommand,
-                commands.divider,
-                commands.hr,
-                commands.link,
-              ]}
-              extraCommands={[
-                commands.fullscreen,
-              ]}
-            />
+          <Toolbar editor={editor} />
+
+          <div className="flex-1 min-h-0 overflow-y-auto tiptap-editor">
+            <EditorContent editor={editor} className="h-full" />
           </div>
         </div>
 
-      {/* Action bar */}
-      <div className="sticky bottom-0 mt-4 flex items-center justify-between border-t border-border bg-background pt-4 pb-2">
-        <div className="flex gap-2">
-          {discardConfirm ? (
-            <>
-              <button
-                onClick={() => setDiscardConfirm(false)}
-                className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-muted active:scale-95 transition-colors duration-150 cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => { setDiscardConfirm(false); onDiscard() }}
-                className="rounded-lg border border-destructive bg-destructive/5 px-4 py-2 text-sm font-medium text-destructive hover:bg-destructive hover:text-white active:scale-95 transition-colors duration-150 cursor-pointer"
-              >
-                Confirm discard
-              </button>
-            </>
-          ) : (
-            <button
-              onClick={() => setDiscardConfirm(true)}
-              className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-muted-foreground hover:border-destructive hover:text-destructive active:scale-95 transition-colors duration-150 cursor-pointer"
-            >
-              Discard
-            </button>
-          )}
-          <button
-            onClick={onRegenerate}
-            disabled={isRegenerating}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-muted active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-150 cursor-pointer"
-          >
-            {isRegenerating ? (
+        {/* Action bar */}
+        <div className="flex items-center justify-between border-t border-border bg-background pt-4 pb-2 shrink-0">
+          <div className="flex gap-2">
+            {discardConfirm ? (
               <>
-                <span className="h-3.5 w-3.5 rounded-full border-2 border-foreground/30 border-t-foreground animate-spin" />
-                Regenerating…
+                <button
+                  onClick={() => setDiscardConfirm(false)}
+                  className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-muted active:scale-95 transition-colors duration-150 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => { setDiscardConfirm(false); onDiscard() }}
+                  className="rounded-lg border border-destructive bg-destructive/5 px-4 py-2 text-sm font-medium text-destructive hover:bg-destructive hover:text-white active:scale-95 transition-colors duration-150 cursor-pointer"
+                >
+                  Confirm discard
+                </button>
               </>
-            ) : '↺ Regenerate'}
-          </button>
+            ) : (
+              <button
+                onClick={() => setDiscardConfirm(true)}
+                className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-muted-foreground hover:border-destructive hover:text-destructive active:scale-95 transition-colors duration-150 cursor-pointer"
+              >
+                Discard
+              </button>
+            )}
+            <button
+              onClick={onRegenerate}
+              disabled={isRegenerating}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-muted active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-150 cursor-pointer"
+            >
+              {isRegenerating ? (
+                <>
+                  <span className="h-3.5 w-3.5 rounded-full border-2 border-foreground/30 border-t-foreground animate-spin" />
+                  Regenerating…
+                </>
+              ) : '↺ Regenerate'}
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handlePreview}
+              disabled={isPreviewing}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-muted active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-150 cursor-pointer"
+            >
+              {isPreviewing ? (
+                <>
+                  <span className="h-3.5 w-3.5 rounded-full border-2 border-foreground/30 border-t-foreground animate-spin" />
+                  Loading…
+                </>
+              ) : '👁 Preview'}
+            </button>
+            <button
+              onClick={onApproveAndSend}
+              disabled={isSending}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-6 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity duration-150 cursor-pointer shadow-sm"
+            >
+              {isSending ? (
+                <>
+                  <span className="h-3.5 w-3.5 rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground animate-spin" />
+                  Sending…
+                </>
+              ) : '✉ Approve & Send'}
+            </button>
+          </div>
         </div>
-        <button
-          onClick={onApproveAndSend}
-          disabled={isSending}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-6 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity duration-150 cursor-pointer shadow-sm"
-        >
-          {isSending ? (
-            <>
-              <span className="h-3.5 w-3.5 rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground animate-spin" />
-              Sending…
-            </>
-          ) : '✉ Approve & Send'}
-        </button>
       </div>
+
     </div>
+
+    {previewHtml && (
+      <PreviewModal html={previewHtml} onClose={() => setPreviewHtml(null)} />
+    )}
+    </>
   )
 }

@@ -281,8 +281,16 @@ async def send_reply(
         flags=re.IGNORECASE | re.DOTALL,
     ).strip()
 
-    mime.attach(MIMEText(clean_body, 'plain'))
-    html_body = HTML_TEMPLATE.replace('{body_html}', _text_to_html(clean_body))
+    if clean_body.strip().startswith('<'):
+        inner_html = clean_body
+        plain_text = re.sub(r'<[^>]+>', ' ', clean_body)
+        plain_text = re.sub(r'\s+', ' ', plain_text).strip()
+    else:
+        inner_html = _text_to_html(clean_body)
+        plain_text = clean_body
+
+    mime.attach(MIMEText(plain_text, 'plain'))
+    html_body = HTML_TEMPLATE.replace('{body_html}', inner_html)
     mime.attach(MIMEText(html_body, 'html'))
 
     raw = base64.urlsafe_b64encode(mime.as_bytes()).decode()

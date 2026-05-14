@@ -1,6 +1,6 @@
 import axios from 'axios'
 import { API_URL } from './config'
-import type { Email, EmailListResponse, Draft, DashboardResponse } from '@/types/api'
+import type { Email, EmailListResponse, Draft, DashboardResponse, Product } from '@/types/api'
 
 const http = axios.create({ baseURL: API_URL })
 
@@ -30,9 +30,16 @@ export const draftsApi = {
     http.post(`/api/v1/drafts/${id}/send`).then(r => r.data),
   discard: (id: string) =>
     http.post(`/api/v1/drafts/${id}/discard`).then(r => r.data),
+  preview: (id: string, body: string) =>
+    http.post(`/api/v1/drafts/${id}/preview`, { body }, { responseType: 'text' }).then(r => r.data as string),
 }
 
 export const dashboardApi = {
   stats: () =>
     http.get<DashboardResponse>('/api/v1/dashboard/stats').then(r => r.data),
+}
+
+export const productsApi = {
+  search: (q: string, limit = 12) =>
+    http.get<Product[]>('/api/v1/products/search', { params: { q, limit } }).then(r => r.data),
 }

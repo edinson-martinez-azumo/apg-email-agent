@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Toaster } from 'sonner'
 import './index.css'
+import './styles/tiptap.css'
 import { AppRouter } from './app/router'
 
 const queryClient = new QueryClient({

@@ -42,6 +42,23 @@ export interface Draft {
   created_at: string
 }
 
+export interface Product {
+  sku: string
+  title: string
+  type: string
+  materials: string
+  moq: string
+  capacities: string
+  in_stock: boolean
+  price_base: number | string
+  price_10k: number | string
+  price_25k: number | string
+  price_50k: number | string
+  price_100k: number | string
+  image_url: string | null
+  dimensions: string | null
+}
+
 export interface DashboardStats {
   total_emails: number
   pending: number

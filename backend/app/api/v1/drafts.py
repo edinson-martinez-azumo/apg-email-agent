@@ -1,6 +1,9 @@
+import re
 import uuid
 import datetime
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import HTMLResponse
+from pydantic import BaseModel
 from sqlalchemy import select
 from app.core.deps import DB
 from app.db.models.draft import Draft
@@ -43,6 +46,35 @@ async def update_draft(draft_id: str, body: DraftUpdate, db: DB):
     await db.commit()
     await db.refresh(draft)
     return draft
+
+
+class PreviewRequest(BaseModel):
+    body: str
+
+
+@router.post('/{draft_id}/preview', response_class=HTMLResponse)
+async def preview_draft(draft_id: str, payload: PreviewRequest, db: DB):
+    from app.services.gmail_service import _text_to_html, HTML_TEMPLATE
+
+    draft = await db.get(Draft, draft_id)
+    if not draft:
+        raise HTTPException(status_code=404, detail='Draft not found')
+
+    clean_body = re.sub(
+        r'\n?APG Sales Team\s*\|.*?apackaginggroup\.com.*$',
+        '',
+        payload.body,
+        flags=re.IGNORECASE | re.DOTALL,
+    ).strip()
+
+    inner_html = clean_body if clean_body.strip().startswith('<') else _text_to_html(clean_body)
+    html = HTML_TEMPLATE.replace('{body_html}', inner_html)
+    # Inject img size cap so preview never scrolls due to oversized images
+    html = html.replace(
+        '</head>',
+        '<style>img{max-width:180px!important;height:auto!important;}</style></head>',
+    )
+    return HTMLResponse(content=html)
 
 
 @router.post('/{draft_id}/approve')

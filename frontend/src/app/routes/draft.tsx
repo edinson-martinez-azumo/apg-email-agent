@@ -8,13 +8,13 @@ function LoadingSkeleton() {
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border bg-card">
-        <div className="mx-auto max-w-6xl px-4 py-3.5 flex items-center gap-3">
+        <div className="mx-auto max-w-7xl px-4 py-3.5 flex items-center gap-3">
           <div className="h-4 w-16 bg-muted rounded animate-pulse" />
           <div className="h-4 w-px bg-border" />
           <div className="h-4 w-48 bg-muted rounded animate-pulse" />
         </div>
       </header>
-      <div className="mx-auto max-w-6xl px-4 py-4">
+      <div className="mx-auto max-w-7xl px-4 py-4">
         <div className="flex gap-4 h-[600px]">
           <div className="flex-1 rounded-xl border border-border bg-muted/30 animate-pulse" />
           <div className="flex-1 rounded-xl border border-border bg-muted/30 animate-pulse" />
@@ -107,7 +107,7 @@ export function DraftPage() {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <header className="sticky top-0 z-10 border-b border-border bg-card/95 backdrop-blur-sm shrink-0">
-        <div className="mx-auto max-w-6xl px-4 py-3.5 flex items-center gap-3">
+        <div className="mx-auto max-w-7xl px-4 py-3.5 flex items-center gap-3">
           <button
             onClick={() => navigate('/inbox')}
             className="text-sm text-muted-foreground hover:text-foreground transition-colors duration-150 cursor-pointer"
@@ -124,7 +124,7 @@ export function DraftPage() {
         </div>
       </header>
 
-      <div className="mx-auto max-w-6xl w-full px-4 py-4 flex-1 flex flex-col">
+      <div className="mx-auto max-w-7xl w-full px-4 py-4 flex-1 flex flex-col">
         <DraftEditor
           email={email}
           draft={draft}

@@ -46,7 +46,10 @@ async def sync_emails(db: DB):
     from app.services.gmail_service import list_unread_messages, get_message, parse_message, get_token
     from sqlalchemy.exc import IntegrityError
 
-    token_data = await get_token(db)
+    try:
+        token_data = await get_token(db)
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
     messages = list_unread_messages(token_data, max_results=50)
     imported = 0
     skipped = 0

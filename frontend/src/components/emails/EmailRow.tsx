@@ -7,6 +7,8 @@ import { formatRelativeTime } from '@/lib/utils'
 import type { Email } from '@/types/api'
 import { useDraftByEmail, useApproveDraft, useSendDraft, useDiscardDraft } from '@/hooks/useDrafts'
 import { useGenerateDraft, useDiscardEmail } from '@/hooks/useEmails'
+import { draftsApi } from '@/lib/api'
+import { PreviewModal } from '@/components/drafts/PreviewModal'
 
 // ─── Main row ─────────────────────────────────────────────────────────────────
 
@@ -179,10 +181,32 @@ function ConfidenceBadge({ score }: { score: number | null }) {
   )
 }
 
+// ─── Draft body renderer (markdown or HTML) ───────────────────────────────────
+
+const SHARED_PROSE = `text-sm text-foreground/85 leading-relaxed
+  [&_p]:mb-2 [&_p:last-child]:mb-0
+  [&_strong]:font-semibold [&_strong]:text-foreground
+  [&_ul]:my-1.5 [&_ul]:pl-4 [&_ul]:list-disc [&_li]:my-0.5
+  [&_ol]:my-1.5 [&_ol]:pl-4 [&_ol]:list-decimal
+  [&_h1]:text-sm [&_h1]:font-semibold [&_h1]:mb-1.5
+  [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:mb-1
+  [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mb-1
+  [&_hr]:border-border [&_hr]:my-2
+  [&_img]:max-w-[140px] [&_img]:h-auto [&_img]:rounded`
+
+function DraftBodyRenderer({ body }: { body: string }) {
+  if (body.trim().startsWith('<')) {
+    return <div className={SHARED_PROSE} dangerouslySetInnerHTML={{ __html: body }} />
+  }
+  return <div className={SHARED_PROSE}><ReactMarkdown>{body}</ReactMarkdown></div>
+}
+
 // ─── Draft ready / approved ───────────────────────────────────────────────────
 
 function DraftContent({ email, readOnly = false }: { email: Email; readOnly?: boolean }) {
   const [discardConfirm, setDiscardConfirm] = useState(false)
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null)
+  const [isPreviewing, setIsPreviewing] = useState(false)
   const { data: draft, isLoading, isError } = useDraftByEmail(email.id)
   const approveDraft = useApproveDraft()
   const sendDraft = useSendDraft()
@@ -190,6 +214,18 @@ function DraftContent({ email, readOnly = false }: { email: Email; readOnly?: bo
   const generate = useGenerateDraft()
 
   const isSending = approveDraft.isPending || sendDraft.isPending
+
+  const handlePreview = async () => {
+    if (!draft) return
+    setIsPreviewing(true)
+    try {
+      const body = draft.edited_body ?? draft.body
+      const html = await draftsApi.preview(draft.id, body)
+      setPreviewHtml(html)
+    } finally {
+      setIsPreviewing(false)
+    }
+  }
 
   const handleApproveAndSend = async () => {
     if (!draft) return
@@ -259,22 +295,13 @@ function DraftContent({ email, readOnly = false }: { email: Email; readOnly?: bo
           )}
           {draft && (
             <div className="max-h-52 overflow-y-auto rounded-lg bg-muted/30 px-3 py-2.5">
-              <div className="text-sm text-foreground/85 leading-relaxed
-                [&_p]:mb-2 [&_p:last-child]:mb-0
-                [&_strong]:font-semibold [&_strong]:text-foreground
-                [&_ul]:my-1.5 [&_ul]:pl-4 [&_ul]:list-disc [&_li]:my-0.5
-                [&_ol]:my-1.5 [&_ol]:pl-4 [&_ol]:list-decimal
-                [&_h1]:text-sm [&_h1]:font-semibold [&_h1]:mb-1.5
-                [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:mb-1
-                [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mb-1
-                [&_hr]:border-border [&_hr]:my-2">
-                <ReactMarkdown>{draftBody}</ReactMarkdown>
-              </div>
+              <DraftBodyRenderer body={draftBody} />
             </div>
           )}
         </div>
       </div>
 
+      {previewHtml && <PreviewModal html={previewHtml} onClose={() => setPreviewHtml(null)} />}
       {!readOnly && <div className="border-t border-border px-5 py-3 flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2">
           {discardConfirm ? (
@@ -318,12 +345,21 @@ function DraftContent({ email, readOnly = false }: { email: Email; readOnly?: bo
 
         <div className="flex items-center gap-2">
           {draft && (
-            <Link
-              to={`/draft/${email.id}`}
-              className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:border-foreground/25 transition-colors duration-150"
-            >
-              Edit →
-            </Link>
+            <>
+              <button
+                onClick={handlePreview}
+                disabled={isPreviewing}
+                className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:border-foreground/25 disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-150 cursor-pointer"
+              >
+                {isPreviewing ? '…' : '👁 Preview'}
+              </button>
+              <Link
+                to={`/draft/${email.id}`}
+                className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:border-foreground/25 transition-colors duration-150"
+              >
+                Edit →
+              </Link>
+            </>
           )}
           <button
             onClick={handleApproveAndSend}
@@ -374,17 +410,7 @@ function SentContent({ email }: { email: Email }) {
           )}
           {draft ? (
             <div className="max-h-52 overflow-y-auto rounded-lg bg-muted/30 px-3 py-2.5">
-              <div className="text-sm text-foreground/85 leading-relaxed
-                [&_p]:mb-2 [&_p:last-child]:mb-0
-                [&_strong]:font-semibold [&_strong]:text-foreground
-                [&_ul]:my-1.5 [&_ul]:pl-4 [&_ul]:list-disc [&_li]:my-0.5
-                [&_ol]:my-1.5 [&_ol]:pl-4 [&_ol]:list-decimal
-                [&_h1]:text-sm [&_h1]:font-semibold [&_h1]:mb-1.5
-                [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:mb-1
-                [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mb-1
-                [&_hr]:border-border [&_hr]:my-2">
-                <ReactMarkdown>{draft.edited_body ?? draft.body}</ReactMarkdown>
-              </div>
+              <DraftBodyRenderer body={draft.edited_body ?? draft.body} />
             </div>
           ) : !isLoading ? (
             <p className="text-sm text-muted-foreground">Reply not found.</p>
