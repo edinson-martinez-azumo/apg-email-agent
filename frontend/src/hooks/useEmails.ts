@@ -36,3 +36,13 @@ export function useGenerateDraft() {
     },
   })
 }
+
+export function useDiscardEmail() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (emailId: string) => emailsApi.discard(emailId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['emails'] })
+    },
+  })
+}

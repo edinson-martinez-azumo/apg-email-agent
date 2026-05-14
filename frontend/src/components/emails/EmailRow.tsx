@@ -6,7 +6,7 @@ import { StatusBadge } from './StatusBadge'
 import { formatRelativeTime } from '@/lib/utils'
 import type { Email } from '@/types/api'
 import { useDraftByEmail, useApproveDraft, useSendDraft, useDiscardDraft } from '@/hooks/useDrafts'
-import { useGenerateDraft } from '@/hooks/useEmails'
+import { useGenerateDraft, useDiscardEmail } from '@/hooks/useEmails'
 
 // ─── Main row ─────────────────────────────────────────────────────────────────
 
@@ -82,6 +82,8 @@ export function EmailRow({ email, isExpanded, onToggle, hideHeader = false, read
 
 function PendingContent({ email }: { email: Email }) {
   const generate = useGenerateDraft()
+  const discard = useDiscardEmail()
+  const [discardConfirm, setDiscardConfirm] = useState(false)
 
   const handleGenerate = () => {
     const t = toast.loading('Generating AI draft…')
@@ -91,11 +93,47 @@ function PendingContent({ email }: { email: Email }) {
     })
   }
 
+  const handleDiscard = async () => {
+    try {
+      await discard.mutateAsync(email.id)
+      toast.success('Email discarded')
+      setDiscardConfirm(false)
+    } catch {
+      toast.error('Failed to discard')
+    }
+  }
+
   return (
     <div className="px-5 pt-4 pb-5">
       <EmailMeta email={email} />
       <EmailBody text={email.body_text} />
-      <div className="flex justify-end pt-4">
+      <div className="flex items-center justify-between pt-4">
+        <div className="flex items-center gap-2">
+          {discardConfirm ? (
+            <>
+              <button
+                onClick={() => setDiscardConfirm(false)}
+                className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted transition-colors duration-150 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDiscard}
+                disabled={discard.isPending}
+                className="rounded-lg border border-destructive bg-destructive/5 px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive hover:text-white disabled:opacity-50 transition-colors duration-150 cursor-pointer"
+              >
+                Confirm discard
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => setDiscardConfirm(true)}
+              className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:border-destructive hover:text-destructive transition-colors duration-150 cursor-pointer"
+            >
+              Discard
+            </button>
+          )}
+        </div>
         <button
           onClick={handleGenerate}
           disabled={generate.isPending}

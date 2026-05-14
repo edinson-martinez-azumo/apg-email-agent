@@ -151,3 +151,19 @@ async def generate_draft_for_email(email_id: str, db: DB):
     ))
     await db.commit()
     return {'status': 'ok', 'draft_preview': draft_body[:200]}
+
+
+@router.post('/{email_id}/discard')
+async def discard_email(email_id: str, db: DB):
+    email = await db.get(Email, email_id)
+    if not email:
+        raise HTTPException(status_code=404, detail='Email not found')
+    email.status = 'discarded'
+    db.add(AuditLog(
+        id=str(uuid.uuid4()),
+        email_id=email_id,
+        action='discarded',
+        created_at=datetime.datetime.now(datetime.timezone.utc),
+    ))
+    await db.commit()
+    return {'status': 'discarded'}

@@ -11,6 +11,8 @@ export const emailsApi = {
     http.get<Email>(`/api/v1/emails/${id}`).then(r => r.data),
   generate: (id: string) =>
     http.post(`/api/v1/emails/${id}/generate`).then(r => r.data),
+  discard: (id: string) =>
+    http.post(`/api/v1/emails/${id}/discard`).then(r => r.data),
   sync: () =>
     http.post('/api/v1/emails/sync').then(r => r.data),
 }
