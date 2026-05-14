@@ -70,6 +70,8 @@ def _fmt_price(val: object) -> str:
 
 
 _CAP_RE = re.compile(r'\b\d+\s*(?:ml|oz|cc|g|l)\b', re.IGNORECASE)
+_NECK_RE = re.compile(r'\b\d{2}/\d{3}\b')
+
 
 def _has_confirmed_specs(p: dict) -> bool:
     """Skip products whose key specs (capacity) cannot be confirmed from the data.
@@ -78,6 +80,20 @@ def _has_confirmed_specs(p: dict) -> bool:
     if cap and cap not in ('nan', 'None', '-'):
         return True
     return bool(_CAP_RE.search(p.get('title') or ''))
+
+
+def _extract_neck_sizes(p: dict) -> str:
+    """Extract neck finish sizes from title or search_text (e.g. 20/410, 24/410)."""
+    sources = [p.get('title') or '', p.get('search_text') or '']
+    found = []
+    seen = set()
+    for src in sources:
+        for m in _NECK_RE.finditer(src):
+            v = m.group()
+            if v not in seen:
+                seen.add(v)
+                found.append(v)
+    return ', '.join(found)
 
 
 def _build_product_context(products: list[dict]) -> str:
@@ -91,8 +107,13 @@ def _build_product_context(products: list[dict]) -> str:
             f"SKU: {p['sku']}{stock}",
             f"Name: {p['title']}",
         ]
+        if p.get('type'):
+            lines.append(f"Type: {p['type']}")
         if p.get('materials'):
             lines.append(f"Material: {p['materials']}")
+        neck = _extract_neck_sizes(p)
+        if neck:
+            lines.append(f"Neck finish: {neck}")
         if p.get('capacities'):
             lines.append(f"Available sizes: {p['capacities']}")
         moq = p.get('moq') or ''
