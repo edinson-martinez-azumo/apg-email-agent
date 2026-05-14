@@ -30,21 +30,15 @@ export function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-10 border-b border-border bg-card/95 backdrop-blur-sm">
+      <header className="sticky top-0 z-10 border-b border-border backdrop-blur-sm" style={{ backgroundColor: 'rgb(18, 118, 189)' }}>
         <div className="mx-auto max-w-5xl px-4 py-3.5 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <div className="h-7 w-7 rounded-lg bg-primary flex items-center justify-center">
-                <svg aria-hidden="true" className="h-4 w-4 text-primary-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                </svg>
-              </div>
-              <h1 className="text-sm font-semibold text-foreground">Dashboard</h1>
-            </div>
+          <div className="flex flex-col items-start">
+            <img src="/APG-logo.svg" alt="APG Logo" className="h-8 w-auto" />
+            <span className="text-xs text-white/70 leading-none mt-0.5">Email Agent</span>
           </div>
           <Link
             to="/inbox"
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors duration-150 cursor-pointer"
+            className="text-sm text-white/80 hover:text-white transition-colors duration-150 cursor-pointer"
           >
             ← Inbox
           </Link>

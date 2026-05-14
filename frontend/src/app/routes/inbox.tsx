@@ -73,16 +73,12 @@ export function InboxPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-10 border-b border-border bg-card/95 backdrop-blur-sm">
+      <header className="sticky top-0 z-10 border-b border-border backdrop-blur-sm" style={{ backgroundColor: 'rgb(18, 118, 189)' }}>
         <div className="mx-auto max-w-5xl px-4 py-3.5 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <div className="h-7 w-7 rounded-lg bg-primary flex items-center justify-center">
-                <svg aria-hidden="true" className="h-4 w-4 text-primary-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                </svg>
-              </div>
-              <h1 className="text-sm font-semibold text-foreground">APG Email Agent</h1>
+            <div className="flex flex-col items-start">
+              <img src="/APG-logo.svg" alt="APG Logo" className="h-8 w-auto" />
+              <span className="text-xs text-white/70 leading-none mt-0.5">Email Agent</span>
             </div>
             {pendingCount > 0 && activeStatus === 'pending' && (
               <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
@@ -96,7 +92,7 @@ export function InboxPage() {
                 onClick={handleSync}
                 disabled={syncMutation.isPending}
                 aria-label="Sync emails from Gmail"
-                className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 min-h-[36px] text-sm text-muted-foreground hover:text-foreground hover:border-primary/40 disabled:opacity-50 transition-colors duration-150 cursor-pointer"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-white/30 bg-white/10 px-3 min-h-[36px] text-sm text-white hover:bg-white/20 disabled:opacity-50 transition-colors duration-150 cursor-pointer"
               >
                 <svg
                   aria-hidden="true"
@@ -110,7 +106,7 @@ export function InboxPage() {
             )}
             <Link
               to="/dashboard"
-              className="text-sm text-muted-foreground hover:text-foreground transition-colors duration-150 cursor-pointer"
+              className="text-sm text-white/80 hover:text-white transition-colors duration-150 cursor-pointer"
             >
               Dashboard →
             </Link>
