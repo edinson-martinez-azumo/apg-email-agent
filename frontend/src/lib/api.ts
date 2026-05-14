@@ -1,6 +1,6 @@
 import axios from 'axios'
 import { API_URL } from './config'
-import type { Email, EmailListResponse, Draft, DashboardResponse, Product } from '@/types/api'
+import type { Email, EmailListResponse, Draft, DashboardResponse, Product, DemoCase } from '@/types/api'
 
 const http = axios.create({ baseURL: API_URL })
 
@@ -44,4 +44,11 @@ export const dashboardApi = {
 export const productsApi = {
   search: (q: string, limit = 12) =>
     http.get<Product[]>('/api/v1/products/search', { params: { q, limit } }).then(r => r.data),
+}
+
+export const demoApi = {
+  cases: () =>
+    http.get<DemoCase[]>('/api/v1/demo/cases').then(r => r.data),
+  send: (caseId: string) =>
+    http.post<{ sent: boolean; case_id: string; subject: string }>(`/api/v1/demo/cases/${caseId}/send`).then(r => r.data),
 }

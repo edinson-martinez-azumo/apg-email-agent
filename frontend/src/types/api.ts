@@ -59,6 +59,17 @@ export interface Product {
   dimensions: string | null
 }
 
+export interface DemoCase {
+  id: string
+  source: string
+  customer: string
+  contact: string
+  email_subject: string
+  email_body: string
+  expected_skus: string[]
+  notes: string
+}
+
 export interface DashboardStats {
   total_emails: number
   pending: number

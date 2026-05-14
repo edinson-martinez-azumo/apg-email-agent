@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
-from app.api.v1 import emails, drafts, auth, dashboard, products
+from app.api.v1 import emails, drafts, auth, dashboard, products, demo
 from app.api import health
 
 app = FastAPI(
@@ -26,3 +26,4 @@ app.include_router(drafts.router,     prefix='/api/v1/drafts',    tags=['drafts'
 app.include_router(auth.router,       prefix='/api/v1/auth',      tags=['auth'])
 app.include_router(dashboard.router,  prefix='/api/v1/dashboard', tags=['dashboard'])
 app.include_router(products.router,   prefix='/api/v1/products',  tags=['products'])
+app.include_router(demo.router,       prefix='/api/v1/demo',      tags=['demo'])

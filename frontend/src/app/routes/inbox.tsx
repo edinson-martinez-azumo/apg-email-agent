@@ -105,6 +105,12 @@ export function InboxPage() {
               </button>
             )}
             <Link
+              to="/demo"
+              className="text-sm text-white/80 hover:text-white transition-colors duration-150 cursor-pointer"
+            >
+              Demo
+            </Link>
+            <Link
               to="/dashboard"
               className="text-sm text-white/80 hover:text-white transition-colors duration-150 cursor-pointer"
             >

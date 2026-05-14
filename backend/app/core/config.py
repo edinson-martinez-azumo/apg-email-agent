@@ -19,10 +19,7 @@ class Settings(BaseSettings):
     gmail_client_id: str = ''
     gmail_client_secret: str = ''
     gmail_redirect_uri: str = ''
-    gmail_scopes: str = (
-        'https://www.googleapis.com/auth/gmail.readonly,'
-        'https://www.googleapis.com/auth/gmail.compose'
-    )
+    gmail_scopes: str = 'https://mail.google.com/'
     poll_interval_minutes: int = 5
 
 
