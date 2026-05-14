@@ -44,8 +44,12 @@ async def send_case_email(case_id: str):
 
     if not settings.smtp_user or not settings.smtp_password:
         raise HTTPException(status_code=503, detail='SMTP_USER / SMTP_PASSWORD not configured')
+
+    smtp_user = settings.smtp_user.strip()
+    smtp_password = settings.smtp_password.strip()
+
     mime = MIMEMultipart('alternative')
-    mime['From'] = formataddr((f'{case["contact"]} - {case["customer"]}', settings.smtp_user))
+    mime['From'] = formataddr((f'{case["contact"]} - {case["customer"]}', smtp_user))
     mime['To'] = _DEMO_TARGET
     mime['Subject'] = f"{case['email_subject']} [{_run_tag()}]"
     mime['X-Eval-Case-Id'] = case_id
@@ -55,7 +59,7 @@ async def send_case_email(case_id: str):
         with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
             server.ehlo()
             server.starttls()
-            server.login(settings.smtp_user, settings.smtp_password)
+            server.login(smtp_user, smtp_password)
             server.send_message(mime)
     except smtplib.SMTPException as e:
         raise HTTPException(status_code=502, detail=f'SMTP error: {e}')
