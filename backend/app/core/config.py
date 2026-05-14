@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     gmail_client_secret: str = ''
     gmail_redirect_uri: str = ''
     gmail_scopes: str = 'https://mail.google.com/'
+    smtp_user: str = ''
+    smtp_password: str = ''
     poll_interval_minutes: int = 5
 
 
