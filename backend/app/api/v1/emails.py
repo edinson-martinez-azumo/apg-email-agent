@@ -110,7 +110,7 @@ async def generate_draft_for_email(email_id: str, db: DB):
 
     try:
         query = f"{email.subject or ''} {email.body_text or ''}".strip()
-        products = await search_products(query, db, top_k=15)
+        products = await search_products(query, db, top_k=12)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f'search_products error: {type(e).__name__}: {e}')
 
