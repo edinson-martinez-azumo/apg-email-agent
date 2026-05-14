@@ -16,9 +16,10 @@ SYSTEM_PROMPT = """You are a sales assistant for APackaging Group (APG), a cosme
 - If the customer expresses general interest in a category or ongoing/inventory needs, present all relevant size variants and compatible accessories from the context.
 - Name SKUs with material and size only — never include marketing or product line names (e.g. "Ageless Magic", "PurePulse", "Misty Glow"). Use SKU + specs only.
 - If the same SKU appears in multiple size groups, list it only once in the most relevant group and note all its available sizes inline (e.g. "30ml & 50ml"). Do not omit other SKUs that belong to a size group just because another SKU covers that size.
-- For dual/multi-chamber products: always read capacity as per-chamber. If the customer asks for "15ml x 2", they want 15ml per chamber (30ml total). A product listed as "15ml (7.5ml*2)" is NOT a match — it's 7.5ml per chamber. Prefer products where the per-chamber capacity matches the customer's stated per-chamber size. If no exact match exists, present the closest available and note the difference explicitly.
+- For dual/multi-chamber products: always read capacity as per-chamber. If the customer asks for "15ml x 2", they want 15ml per chamber (30ml total). A product listed as "15ml (7.5ml*2)" is NOT a match — it's 7.5ml per chamber. Prefer products where the per-chamber capacity matches the customer's stated per-chamber size. If no exact match exists, present the closest available and note the difference explicitly. Important: "Dual" in a product name means dual-chamber, not dual-actuator. Never infer actuator count from "Dual" alone — only exclude a dual-chamber product for actuator mismatch when the product explicitly states "dual actuator".
 - Include ALL products from the context that are plausibly relevant — do not silently drop products. If a spec (neck size, actuator type) is not explicitly in the context but the product type clearly matches the customer request, include it. Only omit a product if it clearly contradicts the customer's stated requirement (e.g. wrong chamber count, wrong capacity range).
-- If a product does not meet the customer's stated spec (actuator type, chamber count, capacity), omit it entirely — do not mention it even to explain why it was excluded.
+- If a product does not meet the customer's stated spec (actuator type, chamber count, capacity), omit it entirely — do not mention it even to explain why it was excluded. Applicator and closure type are hard requirements: a product listed with a dropper is never a valid match when the customer asked for a pump or sprayer, and vice versa. Do not include it even if the material, color, or capacity match perfectly. Exception: fine mist sprayers, crimpless sprayers, and perfume atomizers are valid pump equivalents — treat them as "pump" when the customer is sourcing a fragrance, essential oil, or perfume bottle.
+- For capacity: if no exact match exists for a requested size, include the closest available size from the context and note the difference inline (e.g. "closest available: 60ml").
 - Never add caveats like "neck finish not confirmed" or "needs verification" — include the product with the specs you have, or omit it entirely.
 - Always use the full SKU exactly as it appears in the context. Never abbreviate or truncate SKU codes (e.g. APG-200493 must never appear as APG-493).
 
@@ -117,6 +118,11 @@ def _build_product_context(products: list[dict]) -> str:
             lines.append(f"Neck finish: {neck}")
         if p.get('capacities'):
             lines.append(f"Available sizes: {p['capacities']}")
+        st = (p.get('search_text') or '').lower()
+        if 'single actuator' in st:
+            lines.append('Actuator: single actuator')
+        elif 'dual actuator' in st:
+            lines.append('Actuator: dual actuator')
         moq = p.get('moq') or ''
         lines.append(f"MOQ: {moq}")
         if p.get('image_url'):
@@ -241,6 +247,7 @@ Please write a professional reply email body (no subject line needed)."""
     response = client.messages.create(
         model="claude-sonnet-4-6",
         max_tokens=1024,
+        temperature=0,
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user_message}],
     )
