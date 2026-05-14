@@ -45,7 +45,7 @@ async def send_case_email(case_id: str):
     if not settings.smtp_user or not settings.smtp_password:
         raise HTTPException(status_code=503, detail='SMTP_USER / SMTP_PASSWORD not configured')
     mime = MIMEMultipart('alternative')
-    mime['From'] = formataddr((f'{case["contact"]} ({case["customer"]})', settings.smtp_user))
+    mime['From'] = formataddr((f'{case["contact"]} - {case["customer"]}', settings.smtp_user))
     mime['To'] = _DEMO_TARGET
     mime['Subject'] = f"{case['email_subject']} [{_run_tag()}]"
     mime['X-Eval-Case-Id'] = case_id
