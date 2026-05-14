@@ -22,13 +22,13 @@ function buildProductHtml(p: Product): string {
   ].filter(Boolean).join(', ')
 
   const label = specs ? `${p.sku} — ${specs}` : p.sku
-
   const imgHtml = p.image_url
     ? `<img src="${p.image_url}" alt="${p.title}" style="display:block;max-width:160px;height:auto;border-radius:6px;margin:6px 0;">`
     : ''
 
   return [`<ul><li>${label}</li></ul>`, imgHtml].join('')
 }
+
 
 function ProductCard({ product, onInsert, editorReady, alreadyAdded }: { product: Product; onInsert: (html: string) => void; editorReady: boolean; alreadyAdded: boolean }) {
   const hasImage = Boolean(product.image_url)

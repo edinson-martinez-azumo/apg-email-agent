@@ -9,6 +9,7 @@ import { useDraftByEmail, useApproveDraft, useSendDraft, useDiscardDraft } from 
 import { useGenerateDraft, useDiscardEmail } from '@/hooks/useEmails'
 import { draftsApi } from '@/lib/api'
 import { PreviewModal } from '@/components/drafts/PreviewModal'
+import { CustomerIntent } from '@/components/drafts/CustomerIntent'
 
 // ─── Main row ─────────────────────────────────────────────────────────────────
 
@@ -160,27 +161,6 @@ function PendingContent({ email }: { email: Email }) {
   )
 }
 
-// ─── Confidence badge ─────────────────────────────────────────────────────────
-
-function ConfidenceBadge({ score }: { score: number | null }) {
-  if (score == null) return null
-  const high = score >= 4
-  const low = score <= 2
-  const display = score.toFixed(1)
-  const label = high ? `Score ${display}/5 — High confidence` : low ? `Score ${display}/5 — Review carefully` : `Score ${display}/5`
-  const cls = high
-    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-    : low
-    ? 'bg-amber-50 text-amber-700 border-amber-200'
-    : 'bg-muted text-muted-foreground border-border'
-  return (
-    <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${cls}`}>
-      <span className={`h-1.5 w-1.5 rounded-full ${high ? 'bg-emerald-500' : low ? 'bg-amber-500' : 'bg-muted-foreground'}`} />
-      {label}
-    </span>
-  )
-}
-
 // ─── Draft body renderer (markdown or HTML) ───────────────────────────────────
 
 const SHARED_PROSE = `text-sm text-foreground/85 leading-relaxed
@@ -262,6 +242,9 @@ function DraftContent({ email, readOnly = false }: { email: Email; readOnly?: bo
 
   return (
     <div>
+      <div className="px-5 pt-4 pb-3 border-b border-border">
+        <CustomerIntent emailId={email.id} confidenceScore={draft?.confidence_score} />
+      </div>
       <div className="grid lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-border">
         <div className="px-5 pt-4 pb-5">
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
@@ -276,7 +259,6 @@ function DraftContent({ email, readOnly = false }: { email: Email; readOnly?: bo
             <p className="text-xs font-semibold text-primary uppercase tracking-wider">
               AI Draft Reply
             </p>
-            {draft && <ConfidenceBadge score={draft.confidence_score} />}
           </div>
           {isLoading && (
             <div className="space-y-2 animate-pulse">

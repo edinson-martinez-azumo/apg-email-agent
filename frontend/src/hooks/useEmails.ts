@@ -37,6 +37,15 @@ export function useGenerateDraft() {
   })
 }
 
+export function useEmailIntent(emailId: string) {
+  return useQuery({
+    queryKey: ['emails', emailId, 'intent'],
+    queryFn: () => emailsApi.intent(emailId),
+    enabled: !!emailId,
+    staleTime: Infinity,
+  })
+}
+
 export function useDiscardEmail() {
   const qc = useQueryClient()
   return useMutation({

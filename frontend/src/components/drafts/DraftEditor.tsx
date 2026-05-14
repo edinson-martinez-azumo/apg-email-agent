@@ -6,6 +6,7 @@ import { marked } from 'marked'
 import type { Email, Draft, ThreadEmail } from '@/types/api'
 import { ProductSearchPanel } from './ProductSearchPanel'
 import { PreviewModal } from './PreviewModal'
+import { CustomerIntent } from './CustomerIntent'
 import { useDebounce } from '@/hooks/useDebounce'
 import { draftsApi } from '@/lib/api'
 
@@ -86,6 +87,7 @@ export function DraftEditor({
     extensions: [
       StarterKit,
       Image.configure({ inline: false, allowBase64: false }),
+
     ],
     content: html,
     editorProps: {
@@ -197,6 +199,8 @@ export function DraftEditor({
             </div>
           </div>
         </div>
+
+        <CustomerIntent emailId={email.id} confidenceScore={draft.confidence_score} />
 
         {/* TipTap editor */}
         <div className="flex flex-col rounded-xl border border-primary/40 overflow-hidden flex-1 min-h-0">

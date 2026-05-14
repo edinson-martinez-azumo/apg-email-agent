@@ -156,6 +156,34 @@ async def generate_draft_for_email(email_id: str, db: DB):
     return {'status': 'ok', 'draft_preview': draft_body[:200]}
 
 
+@router.get('/{email_id}/intent')
+async def get_email_intent(email_id: str, db: DB):
+    """Extract what the customer is asking for as bullet points (Haiku, fast)."""
+    import anthropic
+    from app.core.config import settings
+
+    email = await db.get(Email, email_id)
+    if not email:
+        raise HTTPException(status_code=404, detail='Email not found')
+
+    client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+    prompt = (
+        "Extract what the customer is asking for in 3–5 bullet points.\n"
+        "Focus on: product type, capacity/size, material, quantity, special requirements.\n"
+        "Return ONLY bullet points, one per line, starting with '- '.\n"
+        "Be specific and concise. No explanation. No intro line.\n\n"
+        f"Subject: {email.subject or ''}\n\n{email.body_text or ''}"
+    )
+    response = await client.messages.create(
+        model='claude-haiku-4-5-20251001',
+        max_tokens=200,
+        messages=[{'role': 'user', 'content': prompt}],
+    )
+    text = response.content[0].text.strip()
+    bullets = [l[2:].strip() for l in text.splitlines() if l.strip().startswith('- ')]
+    return {'bullets': bullets}
+
+
 @router.post('/{email_id}/discard')
 async def discard_email(email_id: str, db: DB):
     email = await db.get(Email, email_id)

@@ -15,6 +15,8 @@ export const emailsApi = {
     http.post(`/api/v1/emails/${id}/discard`).then(r => r.data),
   sync: () =>
     http.post('/api/v1/emails/sync').then(r => r.data),
+  intent: (id: string) =>
+    http.get<{ bullets: string[] }>(`/api/v1/emails/${id}/intent`).then(r => r.data),
 }
 
 export const draftsApi = {
