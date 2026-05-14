@@ -56,7 +56,7 @@ async def send_case_email(case_id: str):
             server.ehlo()
             server.starttls()
             server.login(settings.smtp_user, settings.smtp_password)
-            server.sendmail(settings.smtp_user, [_DEMO_TARGET], mime.as_string())
+            server.send_message(mime)
     except smtplib.SMTPException as e:
         raise HTTPException(status_code=502, detail=f'SMTP error: {e}')
 
