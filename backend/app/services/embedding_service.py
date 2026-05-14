@@ -7,8 +7,9 @@ from app.core.config import settings
 
 _SKU_RE = re.compile(r'\bAPG-[\w/\-]+', re.IGNORECASE)
 
-EMBED_MODEL = 'embed-english-light-v3.0'
-EMBED_DIMS = 384
+EMBED_MODEL = 'embed-english-v3.0'
+EMBED_DIMS = 1024
+PRODUCT_TABLE = 'product_embeddings_v2'
 RERANK_MODEL = 'rerank-english-v3.0'
 CANDIDATES_MULTIPLIER = 3  # fetch 3x candidates then rerank down to top_k
 
@@ -22,7 +23,7 @@ container type, closure type, material, capacity/size, application, end use.
 
 Rules:
 - Translate intent to catalog terms: "single-handed in shower" → "flip-top cap", "TSA rules" → "100ml travel size", "squeeze" → "tottle squeeze"
-- Vocabulary mappings: "foaming soap/hand soap" → "foamer pump bottle", "foam pump" → "foamer pump", "foaming dispenser" → "foamer pump bottle"
+- Vocabulary mappings: "foaming soap/hand soap" → "foamer pump bottle", "foam pump" → "foamer pump", "foaming dispenser" → "foamer pump bottle", "oil pump" → "treatment pump bottle lotion pump oil compatible", "serum pump" → "treatment pump bottle lotion pump"
 - Include both the inferred closure AND the container type
 - At most 15 terms. No explanation, no punctuation beyond spaces.
 
@@ -44,6 +45,8 @@ Rules:
 - Do NOT split by size variants (30ml + 50ml same product type = one object)
 - Maximum 4 objects. If single product type, return list with one object.
 - Vocabulary: "foaming soap bottle", "foaming hand soap bottle", "foam pump bottle" → type must be "foamer pump bottle". Never map these to generic bottle types.
+- CRITICAL: neck_sizes, capacity, and material belong ONLY to the product they describe. Never copy attributes from one product type to another.
+- CRITICAL: When the customer names a specific SKU with a material (e.g. "your ABS/PP bottle SKU APG-XXX"), that material describes ONLY that named SKU. The general request for "similar bottles" or "other options" has material=null.
 
 Examples:
 Input: "fine mist sprayers 20/410 and 24/410, also lotion pump PCR 20/410"
@@ -51,6 +54,9 @@ Output: [{"description":"fine mist sprayer 20/410 24/410","type":"fine mist spra
 
 Input: "square glass bottles amber 30ml 50ml, compatible pumps 18/400 and 20/400"
 Output: [{"description":"square glass bottle amber 30ml 50ml","type":"glass bottle","capacity":null,"neck_sizes":null,"material":"glass"},{"description":"lotion pump 18/400 20/400","type":"lotion pump","capacity":null,"neck_sizes":["18/400","20/400"],"material":null}]
+
+Input: "I want to review your ABS/PP airless pump bottle SKU APG-200547 and similar airless bottles 30ml, also airless jars 50ml"
+Output: [{"description":"airless pump bottle 30ml","type":"airless pump","capacity":null,"neck_sizes":null,"material":null},{"description":"airless jar 50ml","type":"jar","capacity":"50ml","neck_sizes":null,"material":null}]
 
 Input: "2oz aluminum screw-top jar"
 Output: [{"description":"aluminum screw-top jar 2oz 60ml","type":"jar","capacity":"60ml","neck_sizes":null,"material":"aluminum"}]
@@ -81,6 +87,7 @@ async def _enrich_query(raw_query: str) -> str:
     response = await async_client.messages.create(
         model='claude-haiku-4-5-20251001',
         max_tokens=80,
+        temperature=0,
         messages=[{'role': 'user', 'content': f'{ENRICH_PROMPT}{raw_query}'}],
     )
     terms = response.content[0].text.strip()
@@ -94,6 +101,7 @@ async def _segment_products(raw_query: str) -> list[dict]:
     response = await async_client.messages.create(
         model='claude-haiku-4-5-20251001',
         max_tokens=300,
+        temperature=0,
         messages=[{'role': 'user', 'content': f'{SEGMENT_PROMPT}{raw_query}'}],
     )
     try:
@@ -114,6 +122,9 @@ async def _segment_products(raw_query: str) -> list[dict]:
 _GENERIC_TYPE_WORDS = frozenset({
     'bottle', 'pump', 'jar', 'tube', 'cap', 'container', 'dispenser', 'pack', 'package',
 })
+
+# Materials too generic to filter on — catálog uses abbreviations (PP, ABS, PET) not these words
+_GENERIC_MATERIALS = frozenset({'plastic', 'glass', 'metal', 'polymer', 'aluminum', 'aluminium', 'stainless', 'stainless steel', 'steel'})
 
 
 def _type_keyword(product_type: str) -> str | None:
@@ -139,7 +150,7 @@ def _build_attr_filter(attrs: dict, exclude_skus: set[str]) -> tuple[str, dict]:
         parts.append(f'({" OR ".join(ns_parts)})')
 
     material = attrs.get('material')
-    if material and material.upper() not in ('NULL', 'NONE'):
+    if material and material.upper() not in ('NULL', 'NONE') and material.lower() not in _GENERIC_MATERIALS:
         parts.append('(materials ILIKE :mat OR search_text ILIKE :mat)')
         params['mat'] = f'%{material}%'
 
@@ -181,8 +192,8 @@ async def _expand_variants(candidates: list[dict], db: AsyncSession, already_see
 
     result = await db.execute(text(f"""
         SELECT sku, title, type, materials, moq, capacities,
-               price_base, price_10k, price_25k, price_50k, price_100k, in_stock, image_url
-        FROM product_embeddings
+               price_base, price_10k, price_25k, price_50k, price_100k, in_stock, image_url, search_text
+        FROM product_embeddings_v2
         WHERE ({' OR '.join(like_clauses)})
         LIMIT 40
     """), params)
@@ -190,35 +201,91 @@ async def _expand_variants(candidates: list[dict], db: AsyncSession, already_see
     return [_row_to_dict(r) for r in rows if r['sku'] not in already_seen]
 
 
-async def _rerank(query: str, candidates: list[dict], top_k: int) -> list[dict]:
-    """Rerank candidates using Cohere reranker. Returns top_k best matches."""
-    if len(candidates) <= top_k:
-        return candidates
-    def _cap_with_oz(cap: str) -> str:
-        """Append oz equivalent to ml capacities so the reranker can match oz queries."""
-        if not cap:
-            return cap
-        ml_vals = re.findall(r'\b(\d+)ml\b', cap, re.IGNORECASE)
-        if not ml_vals:
-            return cap
-        parts = []
-        for ml_str in ml_vals:
-            ml = int(ml_str)
-            oz = ml / 29.574
-            parts.append(f'{ml}ml (≈{oz:.0f}oz)')
-        return cap + ' / ' + ', '.join(parts)
+def _cap_with_oz(cap: str) -> str:
+    if not cap:
+        return cap
+    ml_vals = re.findall(r'\b(\d+)ml\b', cap, re.IGNORECASE)
+    if not ml_vals:
+        return cap
+    parts = [f'{int(m)}ml (≈{int(m)/29.574:.0f}oz)' for m in ml_vals]
+    return cap + ' / ' + ', '.join(parts)
 
-    documents = [
-        f"SKU: {c['sku']}. {c['title']}. Capacity: {_cap_with_oz(c['capacities'])}. Materials: {c['materials']}. Type: {c['type']}. MOQ: {c['moq']}."
+
+def _build_rerank_docs(candidates: list[dict]) -> list[str]:
+    return [
+        f"SKU: {c['sku']}. {c['title']}. Capacity: {_cap_with_oz(c['capacities'])}. Materials: {c['materials']}. Type: {c['type']}. MOQ: {c['moq']}. Tags: {(c.get('search_text') or '')[:600]}"
         for c in candidates
     ]
-    response = await _get_cohere().rerank(
-        query=query,
-        documents=documents,
-        model=RERANK_MODEL,
-        top_n=top_k,
-    )
-    return [candidates[r.index] for r in response.results]
+
+
+async def _cohere_rerank_scored(query: str, candidates: list[dict], top_n: int) -> list[tuple[dict, float]]:
+    """Rerank candidates, return (candidate, relevance_score) pairs sorted by score desc."""
+    import asyncio as _asyncio
+    documents = _build_rerank_docs(candidates)
+    for attempt in range(4):
+        try:
+            response = await _get_cohere().rerank(
+                query=query,
+                documents=documents,
+                model=RERANK_MODEL,
+                top_n=top_n,
+            )
+            return [(candidates[r.index], r.relevance_score) for r in response.results]
+        except cohere.errors.too_many_requests_error.TooManyRequestsError:
+            if attempt == 3:
+                raise
+            await _asyncio.sleep(15 * (2 ** attempt))
+
+
+async def _rerank(query: str, candidates: list[dict], top_k: int) -> list[dict]:
+    """Rerank candidates using Cohere reranker. Returns top_k best matches.
+
+    Always fetches top_k*2 results from the reranker to have a wider view.
+    When reranker scores are near-saturated (all within 0.01 of each other), the
+    tiny differences are noise — blend in embedding rank (35%) to stabilize ordering
+    across the wider pool before taking top_k.
+    For normal score spreads, trust the reranker directly (first top_k of the pool).
+    """
+    if len(candidates) <= top_k:
+        return candidates
+    top_n = min(len(candidates), top_k * 2)
+    scored = await _cohere_rerank_scored(query, candidates, top_n=top_n)
+    scores = [s for _, s in scored]
+    if scores and (max(scores) - min(scores)) < 0.01:
+        # Near-saturated: blend wider pool then take top_k
+        n = len(candidates)
+        embed_rank = {c['sku']: i for i, c in enumerate(candidates)}
+        blended = [
+            (c, 0.65 * score + 0.35 * (1.0 - embed_rank.get(c['sku'], n) / n))
+            for c, score in scored
+        ]
+        blended.sort(key=lambda x: x[1], reverse=True)
+        return [c for c, _ in blended[:top_k]]
+    return [c for c, _ in scored[:top_k]]
+
+
+def _split_or_queries(description: str) -> list[str]:
+    """Split 'X or Y ...' on ' or ' boundaries. Returns [description] if no ' or ' found."""
+    parts = re.split(r'\s+or\s+', description, flags=re.IGNORECASE)
+    return parts if len(parts) > 1 else [description]
+
+
+async def _rerank_or_queries(description: str, candidates: list[dict], top_k: int) -> list[dict]:
+    """Per-segment rerank that handles OR alternatives.
+
+    For descriptions without 'or', identical to _rerank.
+    For OR descriptions (e.g. 'amber or square black bottle 30ml 50ml'), the enriched
+    embedding query already covers both alternatives well — the reranker would instead
+    collapse them into a conjunction. Skip reranking and trust embedding order.
+    """
+    if len(candidates) <= top_k:
+        return candidates
+    sub_queries = _split_or_queries(description)
+    if len(sub_queries) == 1:
+        return await _rerank(description, candidates, top_k)
+    # OR-description: candidates already ordered by hybrid embedding score covering
+    # both alternatives — returning top_k directly preserves that coverage.
+    return candidates[:top_k]
 
 
 async def embed(text_input: str) -> list[float]:
@@ -246,6 +313,7 @@ def _row_to_dict(r) -> dict:
         'price_50k': r['price_50k'] or '',
         'price_100k': r['price_100k'] or '',
         'image_url': r['image_url'] or '',
+        'search_text': (r['search_text'] or '') if 'search_text' in r else '',
     }
 
 
@@ -257,8 +325,8 @@ async def _fetch_exact_skus(query: str, db: AsyncSession) -> list[dict]:
     placeholders = ', '.join(f"'{s}'" for s in mentioned)
     result = await db.execute(text(f"""
         SELECT sku, title, type, materials, moq, capacities,
-               price_base, price_10k, price_25k, price_50k, price_100k, in_stock, image_url
-        FROM product_embeddings
+               price_base, price_10k, price_25k, price_50k, price_100k, in_stock, image_url, search_text
+        FROM product_embeddings_v2
         WHERE sku IN ({placeholders})
     """))
     rows = result.mappings().all()
@@ -272,14 +340,14 @@ async def search_products(query: str, db: AsyncSession, top_k: int = 12) -> list
     SKUs explicitly named in the query are injected at the top of results.
     Falls back to keyword search if product_embeddings is empty.
     """
-    count = await db.scalar(text('SELECT COUNT(*) FROM product_embeddings'))
+    count = await db.scalar(text('SELECT COUNT(*) FROM product_embeddings_v2'))
     if not count:
         from app.services.product_service import search as keyword_search
         return keyword_search(query, top_k=top_k)
 
     # Check if metadata columns are populated (post-migration 0010)
     has_metadata = await db.scalar(
-        text("SELECT COUNT(*) FROM product_embeddings WHERE price_10k IS NOT NULL LIMIT 1")
+        text("SELECT COUNT(*) FROM product_embeddings_v2 WHERE price_10k IS NOT NULL LIMIT 1")
     )
 
     import asyncio as _asyncio
@@ -296,17 +364,25 @@ async def search_products(query: str, db: AsyncSession, top_k: int = 12) -> list
             SELECT
                 sku, title, type, materials, moq, capacities,
                 price_base, price_10k, price_25k, price_50k, price_100k, in_stock,
-                image_url,
+                image_url, search_text,
                 (0.7 * (1 - (embedding <=> CAST(:vec AS vector))) +
                  0.3 * ts_rank(search_vector_ts, plainto_tsquery('english', :q))) AS score
-            FROM product_embeddings
+            FROM product_embeddings_v2
             {where}
             ORDER BY score DESC
             LIMIT :k
         """
 
         async def _search_segment(seg: dict) -> list:
-            enriched = await _enrich_query(seg.get('description') or query)
+            desc = seg.get('description') or query
+            # For OR-descriptions with no capacity filter, strip size numbers to avoid
+            # embedding bias toward specific capacities when multiple sizes are requested.
+            or_desc = re.search(r'\bor\b', desc, re.IGNORECASE) and not seg.get('capacity')
+            if or_desc:
+                desc = re.sub(r'\b\d+\s*ml\b', '', desc, flags=re.IGNORECASE)
+                desc = re.sub(r'\b\d+\s*oz\b', '', desc, flags=re.IGNORECASE)
+                desc = re.sub(r'\s{2,}', ' ', desc).strip()
+            enriched = await _enrich_query(desc)
             seg_embedding = await embed(enriched)
             base_params = {'vec': str(seg_embedding), 'q': seg.get('description') or query, 'k': candidates_k}
             attrs = {k: seg.get(k) for k in ('capacity', 'neck_sizes', 'material')}
@@ -341,19 +417,43 @@ async def search_products(query: str, db: AsyncSession, top_k: int = 12) -> list
         for seg in segments:
             segment_rows.append(await _search_segment(seg))
 
-        # Merge and dedup across segments, preserving order (first segment wins on ties)
+        n_segs = len(segments)
+        slots = (top_k + n_segs - 1) // n_segs  # ceil(top_k / n_segs) per segment
+
+        # Rerank each segment independently against its own description query,
+        # then take `slots` from each — prevents one dominant segment from flooding all slots.
         seen = set(exact_skus)
-        candidates = []
-        for rows in segment_rows:
+        per_seg_results: list[dict] = []
+        all_seg_candidates: list[dict] = []
+
+        for seg, rows in zip(segments, segment_rows):
+            seg_candidates = []
             for r in rows:
                 d = _row_to_dict(r)
                 if d['sku'] not in seen:
                     seen.add(d['sku'])
-                    candidates.append(d)
+                    seg_candidates.append(d)
+            all_seg_candidates.extend(seg_candidates)
+            seg_top = await _rerank_or_queries(seg.get('description') or query, seg_candidates, slots)
+            per_seg_results.extend(seg_top)
 
-        variants = await _expand_variants(candidates, db, seen)
-        merged = exact_hits + candidates + variants
-        return await _rerank(query, merged, top_k)
+        # Fill any remaining slots with a global rerank over leftover candidates
+        top_skus = {p['sku'] for p in per_seg_results}
+        extras = [c for c in all_seg_candidates if c['sku'] not in top_skus]
+        remaining = top_k - len(exact_hits) - len(per_seg_results)
+        extras_top = await _rerank(query, extras, remaining) if remaining > 0 and extras else []
+
+        variants = await _expand_variants(all_seg_candidates, db, seen)
+
+        merged = exact_hits + per_seg_results + extras_top + variants
+        # Final dedup preserving order
+        final_seen: set[str] = set()
+        final: list[dict] = []
+        for p in merged:
+            if p['sku'] not in final_seen:
+                final_seen.add(p['sku'])
+                final.append(p)
+        return final[:top_k]
     else:
         # Pre-migration fallback: cosine only + DataFrame merge
         from sqlalchemy import select as sa_select
