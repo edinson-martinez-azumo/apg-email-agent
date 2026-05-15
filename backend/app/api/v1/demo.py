@@ -13,7 +13,7 @@ router = APIRouter()
 
 _DATASET_PATH = pathlib.Path(__file__).resolve().parent.parent.parent.parent / 'data' / 'eval_dataset.json'
 _DEMO_CASES = {'case_01', 'case_02', 'case_03', 'case_06', 'case_08', 'case_10', 'case_11'}
-_DEMO_TARGET = 'edinson.martinez@azumo.co'
+_DEMO_TARGET = 'matias@azumobd.com'
 
 _ADJ  = ['swift', 'bright', 'calm', 'bold', 'crisp', 'fresh', 'keen', 'warm', 'clear', 'sharp']
 _NOUN = ['maple', 'river', 'stone', 'cloud', 'petal', 'grove', 'ember', 'crest', 'meadow', 'tide']
