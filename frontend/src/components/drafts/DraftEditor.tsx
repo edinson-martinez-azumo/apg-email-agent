@@ -86,7 +86,13 @@ export function DraftEditor({
   const editor = useEditor({
     extensions: [
       StarterKit,
-      Image.configure({ inline: false, allowBase64: false }),
+      Image.configure({
+        inline: false,
+        allowBase64: false,
+        HTMLAttributes: {
+          style: 'max-width:160px;height:auto;border-radius:6px;margin:6px 0;display:block;',
+        },
+      }),
 
     ],
     content: html,
@@ -173,9 +179,43 @@ export function DraftEditor({
     <>
     <div className="flex gap-4 h-full">
 
-      {/* Left column — product search */}
-      <div className="w-80 xl:w-96 shrink-0 flex flex-col" style={{ height: '100%' }}>
-        <ProductSearchPanel onInsert={handleInsertProduct} onRemove={handleRemoveProduct} editorReady={editorReady} insertedSkus={insertedSkus} />
+      {/* Left column */}
+      <div className="w-80 xl:w-96 shrink-0 flex flex-col gap-3" style={{ height: '100%' }}>
+
+        {/* In Draft panel */}
+        {insertedSkus.size > 0 && (
+          <div className="rounded-xl border border-border overflow-hidden shrink-0">
+            <div className="px-4 py-2.5 bg-muted/50 border-b border-border flex items-center gap-2">
+              <div className="h-2 w-2 rounded-full bg-primary" />
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">In Draft</p>
+              <span className="ml-auto rounded-full bg-primary/10 text-primary px-2 py-0.5 text-xs font-medium">
+                {insertedSkus.size}
+              </span>
+            </div>
+            <div className="px-3 py-2.5 flex flex-col gap-1 max-h-48 overflow-y-auto">
+              {[...insertedSkus].map(sku => (
+                <div key={sku} className="flex items-center justify-between gap-2 rounded-md bg-muted/50 px-2.5 py-1.5">
+                  <span className="text-xs font-mono text-foreground/80 truncate">{sku}</span>
+                  <button
+                    onClick={() => handleRemoveProduct(sku)}
+                    className="text-muted-foreground hover:text-destructive transition-colors shrink-0 cursor-pointer"
+                    title={`Remove ${sku}`}
+                  >
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Product search panel */}
+        <div className="flex-1 min-h-0">
+          <ProductSearchPanel onInsert={handleInsertProduct} editorReady={editorReady} insertedSkus={insertedSkus} />
+        </div>
+
       </div>
 
       {/* Right column */}
