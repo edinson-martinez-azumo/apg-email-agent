@@ -119,8 +119,14 @@ export function DraftEditor({
   }, [debouncedHtml]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const insertedSkus = useMemo(() => {
-    const matches = html.match(/\bAPG-[\w/\-]+/gi) ?? []
-    return new Set(matches.map(s => s.toUpperCase()))
+    const skus = new Set<string>()
+    const liBlocks = html.match(/<li[\s>][\s\S]*?<\/li>/gi) ?? []
+    for (const li of liBlocks) {
+      const text = li.replace(/<[^>]+>/g, ' ')
+      const matches = text.match(/\bAPG-[\w/\-]+/gi) ?? []
+      matches.forEach(s => skus.add(s.toUpperCase()))
+    }
+    return skus
   }, [html])
 
   const handlePreview = useCallback(async () => {
@@ -138,13 +144,38 @@ export function DraftEditor({
     editor.chain().focus().insertContent(productHtml).run()
   }, [editor])
 
+  const handleRemoveProduct = useCallback((sku: string) => {
+    if (!editor) return
+    const escaped = sku.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const exact = new RegExp(`${escaped}(?![\\w/\\-])`, 'i')
+    const json = editor.getJSON()
+
+    const newContent = (json.content ?? []).flatMap((node) => {
+      // Remove standalone images whose alt matches the SKU
+      if (node.type === 'image' && exact.test(node.attrs?.alt ?? '')) return []
+
+      // For bullet lists: remove only the matching listItem(s)
+      if (node.type === 'bulletList') {
+        const remaining = (node.content ?? []).filter(
+          item => !exact.test(JSON.stringify(item))
+        )
+        if (remaining.length === 0) return []
+        return [{ ...node, content: remaining }]
+      }
+
+      return [node]
+    })
+
+    editor.commands.setContent({ ...json, content: newContent })
+  }, [editor])
+
   return (
     <>
     <div className="flex gap-4 h-full">
 
       {/* Left column — product search */}
       <div className="w-80 xl:w-96 shrink-0 flex flex-col" style={{ height: '100%' }}>
-        <ProductSearchPanel onInsert={handleInsertProduct} editorReady={editorReady} insertedSkus={insertedSkus} />
+        <ProductSearchPanel onInsert={handleInsertProduct} onRemove={handleRemoveProduct} editorReady={editorReady} insertedSkus={insertedSkus} />
       </div>
 
       {/* Right column */}
