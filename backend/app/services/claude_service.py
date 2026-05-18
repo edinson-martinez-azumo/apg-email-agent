@@ -22,6 +22,7 @@ SYSTEM_PROMPT = """You are a sales assistant for APackaging Group (APG), a cosme
 - For capacity: if no exact match exists for a requested size, include the closest available size from the context and note the difference inline (e.g. "closest available: 60ml").
 - Never add caveats like "neck finish not confirmed" or "needs verification" — include the product with the specs you have, or omit it entirely.
 - Always use the full SKU exactly as it appears in the context. Never abbreviate or truncate SKU codes (e.g. APG-200493 must never appear as APG-493).
+- **CRITICAL — Do not repeat already-suggested SKUs:** When the thread context lists "Already suggested SKUs", those products have ALREADY been recommended in a previous message in this thread. NEVER include them again. Only recommend NEW products from the context that were not previously suggested. If ALL relevant products were already suggested, do not repeat any — instead acknowledge the prior recommendations and advance to next steps (MOQ, shipping, samples, or ask for target quantity).
 
 ## Lead qualification
 - If the customer mentions a quantity or desired MOQ, always compare it to the product MOQ in the context.
@@ -36,8 +37,11 @@ SYSTEM_PROMPT = """You are a sales assistant for APackaging Group (APG), a cosme
 - Never ask for product detail clarification — if a product isn't in the catalog, note it briefly and move on.
 - Never make promises the agent cannot keep (e.g. "I'll follow up shortly") — only state what is confirmed.
 
-## Thread context
-- If the thread history already contains product recommendations, do not repeat them. Focus on advancing the conversation: answer pricing questions, confirm sampling options, or ask for target quantity/annual volume to work toward competitive pricing.
+## Thread awareness
+- Read the full thread history before responding. Identify the latest message from the customer — that's the one you're replying to.
+- If the thread already contains product recommendations, do NOT repeat them. Instead: answer follow-up questions (pricing, sampling, timeline), confirm details, or ask for target quantity/annual volume.
+- If the customer is following up on a previous recommendation (e.g., "I'd like to order the ones you sent"), acknowledge the prior context and advance to next steps (MOQ, shipping, samples).
+- Never reply to an old message in the thread — always address the most recent customer message.
 
 ## Formatting
 - Use markdown: **bold** for SKUs, bullet lists (`-`) for product options grouped by size when listing multiple items.
@@ -136,12 +140,29 @@ def _build_product_context(products: list[dict]) -> str:
 def _build_thread_context(thread_history: list) -> str:
     if not thread_history:
         return ''
-    lines = ['Previous emails in this thread (oldest first):']
-    for msg in thread_history:
+    lines = [f'Thread history ({len(thread_history)} message(s), oldest first):']
+    for i, msg in enumerate(thread_history, start=1):
         sender = msg.from_name or msg.from_email
-        lines.append(f"\n--- From: {sender} <{msg.from_email}> ---")
+        lines.append(f"\n--- Message {i} of {len(thread_history)} ---")
+        lines.append(f"From: {sender} <{msg.from_email}>")
+        lines.append(f"Date: {msg.received_at}")
         lines.append(msg.body_text or '(no body)')
     return '\n'.join(lines)
+
+
+def _extract_suggested_skus(thread_history: list) -> list[str]:
+    """Extract SKU codes that appear in the thread body text (products already recommended)."""
+    if not thread_history:
+        return []
+    sku_pattern = re.compile(r'\b(APG-\d{2,6}(?:/[A-Z0-9]+)?|[A-Z]{2,4}-\d{3,6})\b')
+    suggested: set[str] = set()
+    for msg in thread_history:
+        body = msg.body_text or ''
+        for sku in sku_pattern.findall(body):
+            # Only include SKUs that look like APG product codes (2-6 digits after APG-)
+            if '-APG-' in sku or sku.startswith('APG-') or sku.startswith('APG'):
+                suggested.add(sku)
+    return list(suggested)
 
 
 EXTRACT_PROMPT = """You are a search query builder for a packaging product catalog.
@@ -231,18 +252,25 @@ def generate_draft(
     confirmed = [p for p in products if _has_confirmed_specs(p)]
     product_context = _build_product_context(confirmed)
     thread_context = _build_thread_context(thread_history or [])
+    suggested_skus = _extract_suggested_skus(thread_history or [])
 
     thread_section = f"\n\n{thread_context}\n" if thread_context else ''
+    skus_section = '\n'.join(f'- {sku}' for sku in suggested_skus)
+    skus_block = f'\n\n=== ALREADY SUGGESTED SKUs ===\n{skus_section}\n' if suggested_skus else ''
 
-    user_message = f"""Customer email:
+    user_message = f"""You are replying to a customer email within an existing conversation thread.
+
+=== CURRENT EMAIL TO REPLY TO ===
 Subject: {email_subject}
+From the latest message in this thread:
 ---
 {email_body}
-{thread_section}
----
+
+=== PREVIOUS THREAD HISTORY ==={thread_section}{skus_block}
+=== RELEVANT PRODUCTS ===
 {product_context}
 
-Please write a professional reply email body (no subject line needed)."""
+Write a professional reply email body (no subject line). Base it on the current email, considering the full thread context above. Do NOT repeat any of the already suggested SKUs listed above."""
 
     response = client.messages.create(
         model="claude-sonnet-4-6",

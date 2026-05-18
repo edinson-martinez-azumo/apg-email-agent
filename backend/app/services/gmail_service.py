@@ -69,6 +69,9 @@ def parse_message(msg: dict[str, Any]) -> dict[str, Any]:
         'subject': subject,
         'body_text': body_text,
         'received_at': received_at,
+        'message_id': headers.get('message-id'),
+        'in_reply_to': headers.get('in-reply-to'),
+        'references': headers.get('references'),
     }
 
 
@@ -180,6 +183,16 @@ async def send_reply(
     thread_id = original.get('threadId', '')
     reply_subject = f"Re: {subject}" if not subject.startswith('Re:') else subject
 
+    # Build the full References chain: original Message-ID + any existing References
+    references_chain = [message_id_header] if message_id_header else []
+    existing_refs = headers.get('References', '')
+    if existing_refs:
+        for ref in existing_refs.split():
+            if ref not in references_chain:
+                references_chain.append(ref)
+
+    references_header = ' '.join(references_chain) if references_chain else None
+
     clean_body = re.sub(
         r'\n?APG Sales Team\s*\|.*?apackaginggroup\.com.*$',
         '',
@@ -207,7 +220,8 @@ async def send_reply(
     mime['subject'] = reply_subject
     if message_id_header:
         mime['In-Reply-To'] = message_id_header
-        mime['References'] = message_id_header
+    if references_header:
+        mime['References'] = references_header
     mime.attach(MIMEText(plain_text, 'plain'))
     mime.attach(MIMEText(html_body, 'html'))
 

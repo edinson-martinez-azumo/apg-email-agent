@@ -17,6 +17,11 @@ class Email(Base):
     status:       Mapped[str]        = mapped_column(String(50), default='pending')
     created_at:   Mapped[DateTime]   = mapped_column(DateTime(timezone=True), server_default=func.now())
 
+    # Email reference headers for proper threading
+    message_id:   Mapped[str | None] = mapped_column(String(500), index=True)
+    in_reply_to:  Mapped[str | None] = mapped_column(String(500))
+    references:   Mapped[str | None] = mapped_column(Text)
+
     draft:           Mapped['Draft']              = relationship('Draft', back_populates='email', uselist=False)  # noqa: F821
     product_matches: Mapped[list['ProductMatch']] = relationship('ProductMatch', back_populates='email')          # noqa: F821
     audit_logs:      Mapped[list['AuditLog']]     = relationship('AuditLog', back_populates='email')             # noqa: F821
