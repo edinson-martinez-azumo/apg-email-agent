@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import ReactMarkdown from 'react-markdown'
 import { StatusBadge } from './StatusBadge'
@@ -84,9 +84,14 @@ export function EmailRow({ email, isExpanded, onToggle, hideHeader = false, read
 // ─── Pending ──────────────────────────────────────────────────────────────────
 
 function PendingContent({ email }: { email: Email }) {
+  const navigate = useNavigate()
   const generate = useGenerateDraft()
   const discard = useDiscardEmail()
   const [discardConfirm, setDiscardConfirm] = useState(false)
+
+  const handleValidate = () => {
+    navigate(`/inbox/${email.id}/validate-products`)
+  }
 
   const handleGenerate = () => {
     const t = toast.loading('Generating AI draft…')
@@ -137,25 +142,36 @@ function PendingContent({ email }: { email: Email }) {
             </button>
           )}
         </div>
-        <button
-          onClick={handleGenerate}
-          disabled={generate.isPending}
-          className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 min-h-[40px] text-sm font-medium text-primary-foreground hover:opacity-90 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity duration-150 cursor-pointer"
-        >
-          {generate.isPending ? (
-            <>
-              <span className="h-3 w-3 rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground animate-spin" />
-              Generating…
-            </>
-          ) : (
-            <>
-              <svg aria-hidden="true" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-              Generate Draft
-            </>
-          )}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleGenerate}
+            disabled={generate.isPending}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-150 cursor-pointer"
+          >
+            {generate.isPending ? (
+              <>
+                <span className="h-3 w-3 rounded-full border-2 border-foreground/30 border-t-foreground animate-spin" />
+                Generating…
+              </>
+            ) : (
+              <>
+                <svg aria-hidden="true" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                Generate Draft
+              </>
+            )}
+          </button>
+          <button
+            onClick={handleValidate}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 min-h-[40px] text-sm font-medium text-primary-foreground hover:opacity-90 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity duration-150 cursor-pointer"
+          >
+            <svg aria-hidden="true" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            Validate Products
+          </button>
+        </div>
       </div>
     </div>
   )

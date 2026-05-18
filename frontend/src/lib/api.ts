@@ -17,6 +17,14 @@ export const emailsApi = {
     http.post('/api/v1/emails/sync').then(r => r.data),
   intent: (id: string) =>
     http.get<{ bullets: string[] }>(`/api/v1/emails/${id}/intent`).then(r => r.data),
+  getValidation: (id: string) =>
+    http.get<ProductValidation>(`/api/v1/emails/${id}/products/validation`).then(r => r.data),
+  validateProducts: (id: string, body: { confirmed: string[]; rejected: string[] }) =>
+    http.post<ProductValidation>(`/api/v1/emails/${id}/products/validate`, body).then(r => r.data),
+  addProduct: (id: string, sku: string) =>
+    http.post<{ status: string; sku: string }>(`/api/v1/emails/${id}/products/add`, { sku }).then(r => r.data),
+  generateWithProducts: (id: string, body: { products: string[] }) =>
+    http.post<{ status: string; draft_preview: string }>(`/api/v1/emails/${id}/generate-with-products`, body).then(r => r.data),
 }
 
 export const draftsApi = {

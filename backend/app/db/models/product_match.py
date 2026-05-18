@@ -11,6 +11,7 @@ class ProductMatch(Base):
     sku:        Mapped[str]        = mapped_column(String(100))
     title:      Mapped[str | None] = mapped_column(String(500))
     score:      Mapped[float | None] = mapped_column(Float)
+    status:     Mapped[str | None] = mapped_column(String(20))  # NULL=suggested, confirmed, rejected
     created_at: Mapped[DateTime]   = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     email: Mapped['Email'] = relationship('Email', back_populates='product_matches')  # noqa: F821

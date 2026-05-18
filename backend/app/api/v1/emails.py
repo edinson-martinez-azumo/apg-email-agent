@@ -1,6 +1,7 @@
 import uuid
 import datetime
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import select, func
 from app.core.deps import DB
 from app.db.models.email import Email
@@ -10,6 +11,30 @@ from app.db.models.audit_log import AuditLog
 from app.schemas.email import EmailRead, EmailListResponse
 
 router = APIRouter()
+
+
+# ─── Pydantic schemas ──────────────────────────────────────────────────────────
+
+
+class ProductValidationResponse(BaseModel):
+    suggested: list[dict]
+    confirmed: list[dict]
+    rejected: list[dict]
+
+    model_config = {'from_attributes': True}
+
+
+class ValidateProductsRequest(BaseModel):
+    confirmed: list[str]
+    rejected: list[str]
+
+
+class AddProductRequest(BaseModel):
+    sku: str
+
+
+class GenerateWithProductsRequest(BaseModel):
+    products: list[str] = []
 
 
 @router.get('/', response_model=EmailListResponse)
@@ -111,11 +136,30 @@ async def generate_draft_for_email(email_id: str, db: DB):
 
     thread = await _get_thread(email, db)
 
-    try:
+    # Check for existing confirmed products
+    existing_validation = await db.execute(
+        select(ProductMatch).where(
+            ProductMatch.email_id == email_id,
+            ProductMatch.status == 'confirmed',
+        )
+    )
+    confirmed_matches = existing_validation.scalars().all()
+
+    if confirmed_matches:
+        # Use only confirmed products
         query = f"{email.subject or ''} {email.body_text or ''}".strip()
-        products = await search_products(query, db, top_k=12)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f'search_products error: {type(e).__name__}: {e}')
+        all_products = await search_products(query, db, top_k=12)
+        confirmed_skus = {m.sku for m in confirmed_matches}
+        products = [p for p in all_products if p['sku'] in confirmed_skus]
+    else:
+        products = []
+
+    if not products:
+        try:
+            query = f"{email.subject or ''} {email.body_text or ''}".strip()
+            products = await search_products(query, db, top_k=12)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f'search_products error: {type(e).__name__}: {e}')
 
     try:
         draft_body, confidence_score = ai_generate(
@@ -198,3 +242,232 @@ async def discard_email(email_id: str, db: DB):
     ))
     await db.commit()
     return {'status': 'discarded'}
+
+
+# ─── Product validation endpoints ─────────────────────────────────────────────
+
+
+def _serialize_product_match(pm: ProductMatch) -> dict:
+    return {
+        'id': pm.id,
+        'sku': pm.sku,
+        'title': pm.title,
+        'score': pm.score,
+        'status': pm.status,
+    }
+
+
+@router.get('/{email_id}/products/validation', response_model=ProductValidationResponse)
+async def get_product_validation(email_id: str, db: DB):
+    """Get product validation state for an email."""
+    email = await db.get(Email, email_id)
+    if not email:
+        raise HTTPException(status_code=404, detail='Email not found')
+
+    result = await db.execute(
+        select(ProductMatch).where(ProductMatch.email_id == email_id)
+    )
+    all_matches = result.scalars().all()
+
+    suggested = []
+    confirmed = []
+    rejected = []
+
+    for match in all_matches:
+        data = _serialize_product_match(match)
+        if match.status == 'confirmed':
+            confirmed.append(data)
+        elif match.status == 'rejected':
+            rejected.append(data)
+        else:
+            suggested.append(data)
+
+    return ProductValidationResponse(
+        suggested=suggested,
+        confirmed=confirmed,
+        rejected=rejected,
+    )
+
+
+@router.post('/{email_id}/products/validate')
+async def validate_products(email_id: str, body: ValidateProductsRequest, db: DB):
+    """Update product validation state for an email."""
+    email = await db.get(Email, email_id)
+    if not email:
+        raise HTTPException(status_code=404, detail='Email not found')
+
+    for sku in body.confirmed:
+        result = await db.execute(
+            select(ProductMatch).where(
+                ProductMatch.email_id == email_id,
+                ProductMatch.sku == sku,
+            )
+        )
+        match = result.scalar_one_or_none()
+        if match:
+            match.status = 'confirmed'
+
+    for sku in body.rejected:
+        result = await db.execute(
+            select(ProductMatch).where(
+                ProductMatch.email_id == email_id,
+                ProductMatch.sku == sku,
+            )
+        )
+        match = result.scalar_one_or_none()
+        if match:
+            match.status = 'rejected'
+
+    await db.commit()
+
+    # Return updated state
+    result = await db.execute(
+        select(ProductMatch).where(ProductMatch.email_id == email_id)
+    )
+    all_matches = result.scalars().all()
+
+    suggested = []
+    confirmed = []
+    rejected = []
+    for match in all_matches:
+        data = _serialize_product_match(match)
+        if match.status == 'confirmed':
+            confirmed.append(data)
+        elif match.status == 'rejected':
+            rejected.append(data)
+        else:
+            suggested.append(data)
+
+    return ProductValidationResponse(
+        suggested=suggested,
+        confirmed=confirmed,
+        rejected=rejected,
+    )
+
+
+@router.post('/{email_id}/products/add')
+async def add_product(email_id: str, body: AddProductRequest, db: DB):
+    """Add a new product to the email's product list (auto-confirmed)."""
+    email = await db.get(Email, email_id)
+    if not email:
+        raise HTTPException(status_code=404, detail='Email not found')
+
+    # Check product exists in products table
+    from app.db.models.product import Product
+    product_result = await db.execute(
+        select(Product).where(Product.sku == body.sku)
+    )
+    product = product_result.scalar_one_or_none()
+    if not product:
+        raise HTTPException(status_code=404, detail=f'Product {body.sku} not found')
+
+    # Check if already exists
+    existing = await db.execute(
+        select(ProductMatch).where(
+            ProductMatch.email_id == email_id,
+            ProductMatch.sku == body.sku,
+        )
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail='Product already added')
+
+    db.add(ProductMatch(
+        id=str(uuid.uuid4()),
+        email_id=email_id,
+        sku=body.sku,
+        title=product.title,
+        score=None,
+        status='confirmed',
+    ))
+
+    await db.commit()
+
+    return {'status': 'ok', 'sku': body.sku}
+
+
+@router.post('/{email_id}/generate-with-products')
+async def generate_with_products(email_id: str, body: GenerateWithProductsRequest, db: DB):
+    """Generate draft using only confirmed products (and optionally user-added ones)."""
+    email = await db.get(Email, email_id)
+    if not email:
+        raise HTTPException(status_code=404, detail='Email not found')
+
+    thread = await _get_thread(email, db)
+
+    # Get confirmed products from validation
+    result = await db.execute(
+        select(ProductMatch).where(
+            ProductMatch.email_id == email_id,
+            ProductMatch.status == 'confirmed',
+        )
+    )
+    confirmed_matches = result.scalars().all()
+
+    # Add any extra products from request
+    extra_skus = set(body.products)
+    for match in confirmed_matches:
+        extra_skus.add(match.sku)
+
+    # Search for product details
+    from app.services.embedding_service import search_products
+    try:
+        query = f"{email.subject or ''} {email.body_text or ''}".strip()
+        all_products = await search_products(query, db, top_k=12)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f'search_products error: {type(e).__name__}: {e}')
+
+    # Filter to only confirmed/user-added SKUs
+    confirmed_products = [p for p in all_products if p['sku'] in extra_skus]
+
+    if not confirmed_products:
+        raise HTTPException(status_code=400, detail='No confirmed products selected')
+
+    try:
+        from app.services.claude_service import generate_draft as ai_generate
+        draft_body, confidence_score = ai_generate(
+            email.subject or '',
+            email.body_text or '',
+            confirmed_products,
+            thread_history=thread,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f'generate_draft error: {type(e).__name__}: {e}')
+
+    # Save draft
+    existing = await db.execute(select(Draft).where(Draft.email_id == email_id))
+    draft = existing.scalar_one_or_none()
+    if draft:
+        draft.body = draft_body
+        draft.edited_body = None
+        draft.confidence_score = confidence_score
+    else:
+        draft = Draft(
+            id=str(uuid.uuid4()),
+            email_id=email_id,
+            body=draft_body,
+            edited_body=None,
+            confidence_score=confidence_score,
+        )
+        db.add(draft)
+
+    # Update product match statuses
+    confirmed_skus = set(body.products)
+    for match in confirmed_matches:
+        match.status = 'confirmed'
+        confirmed_skus.add(match.sku)
+
+    # Mark unmatched suggested products as rejected
+    for match in confirmed_matches:
+        if match.sku not in confirmed_skus:
+            match.status = 'rejected'
+
+    email.status = 'draft_ready'
+    db.add(AuditLog(
+        id=str(uuid.uuid4()),
+        email_id=email_id,
+        action='generated',
+        created_at=datetime.datetime.now(datetime.timezone.utc),
+    ))
+    await db.commit()
+
+    return {'status': 'ok', 'draft_preview': draft_body[:200]}

@@ -100,3 +100,27 @@ export interface PollStatus {
   status: string
   message: string
 }
+
+export interface ProductValidation {
+  suggested: Array<{
+    id: string
+    sku: string
+    title: string | null
+    score: number | null
+    status: string | null
+  }>
+  confirmed: Array<{
+    id: string
+    sku: string
+    title: string | null
+    score: number | null
+    status: string | null
+  }>
+  rejected: Array<{
+    id: string
+    sku: string
+    title: string | null
+    score: number | null
+    status: string | null
+  }>
+}
