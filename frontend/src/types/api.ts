@@ -89,3 +89,14 @@ export interface DashboardResponse {
   stats: DashboardStats
   recent_sent: RecentSentEmail[]
 }
+
+export interface PollStatus {
+  automated_mode: boolean
+  polling_interval_seconds: number
+  last_poll_at: string | null
+  pending_count: number
+  new_emails: number
+  processed_count: number
+  status: string
+  message: string
+}

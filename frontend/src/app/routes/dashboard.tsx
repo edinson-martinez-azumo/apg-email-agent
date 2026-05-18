@@ -1,4 +1,3 @@
-import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { dashboardApi } from '@/lib/api'
 import { formatRelativeTime } from '@/lib/utils'
@@ -29,23 +28,8 @@ export function DashboardPage() {
   })
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-10 border-b border-border backdrop-blur-sm" style={{ backgroundColor: 'rgb(18, 118, 189)' }}>
-        <div className="mx-auto max-w-5xl px-4 py-3.5 flex items-center justify-between">
-          <div className="flex flex-col items-start">
-            <img src="/APG-logo.svg" alt="APG Logo" className="h-8 w-auto" />
-            <span className="text-xs text-white/70 leading-none mt-0.5">Email Agent</span>
-          </div>
-          <Link
-            to="/inbox"
-            className="text-sm text-white/80 hover:text-white transition-colors duration-150 cursor-pointer"
-          >
-            ← Inbox
-          </Link>
-        </div>
-      </header>
-
-      <div className="mx-auto max-w-5xl px-4 py-6">
+    <div className="mx-auto max-w-5xl px-4 py-6">
+      <>
         {isError && (
           <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-4 mb-6">
             <p className="text-sm text-destructive">Failed to load dashboard stats.</p>
@@ -125,7 +109,7 @@ export function DashboardPage() {
             </div>
           ) : null}
         </div>
-      </div>
+      </>
     </div>
   )
 }

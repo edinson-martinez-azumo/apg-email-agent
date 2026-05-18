@@ -1,6 +1,6 @@
 import axios from 'axios'
 import { API_URL } from './config'
-import type { Email, EmailListResponse, Draft, DashboardResponse, Product, DemoCase } from '@/types/api'
+import type { Email, EmailListResponse, Draft, DashboardResponse, Product, DemoCase, PollStatus } from '@/types/api'
 
 const http = axios.create({ baseURL: API_URL })
 
@@ -51,4 +51,18 @@ export const demoApi = {
     http.get<DemoCase[]>('/api/v1/demo/cases').then(r => r.data),
   send: (caseId: string) =>
     http.post<{ sent: boolean; case_id: string; subject: string }>(`/api/v1/demo/cases/${caseId}/send`).then(r => r.data),
+}
+
+export const settingsApi = {
+  get: () =>
+    http.get<{ automated_mode: boolean; polling_interval_seconds: number }>('/api/v1/settings').then(r => r.data),
+  update: (payload: { automated_mode: boolean; polling_interval_seconds: number }) =>
+    http.put<{ automated_mode: boolean; polling_interval_seconds: number }>('/api/v1/settings', payload).then(r => r.data),
+}
+
+export const pollApi = {
+  status: () =>
+    http.get<PollStatus>('/api/v1/tasks/poll/status').then(r => r.data),
+  trigger: () =>
+    http.post<PollStatus>('/api/v1/tasks/poll').then(r => r.data),
 }

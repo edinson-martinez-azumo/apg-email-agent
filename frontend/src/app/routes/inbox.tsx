@@ -1,5 +1,4 @@
 import { useState, useMemo } from 'react'
-import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import { EmailRow } from '@/components/emails/EmailRow'
 import { ThreadRow } from '@/components/emails/ThreadRow'
@@ -72,54 +71,7 @@ export function InboxPage() {
   }, [data?.items])
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-10 border-b border-border backdrop-blur-sm" style={{ backgroundColor: 'rgb(18, 118, 189)' }}>
-        <div className="mx-auto max-w-5xl px-4 py-3.5 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex flex-col items-start">
-              <img src="/APG-logo.svg" alt="APG Logo" className="h-8 w-auto" />
-              <span className="text-xs text-white/70 leading-none mt-0.5">Email Agent</span>
-            </div>
-            {pendingCount > 0 && activeStatus === 'pending' && (
-              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-                {pendingCount}
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-3">
-            {activeStatus === 'pending' && (
-              <button
-                onClick={handleSync}
-                disabled={syncMutation.isPending}
-                aria-label="Sync emails from Gmail"
-                className="inline-flex items-center gap-1.5 rounded-lg border border-white/30 bg-white/10 px-3 min-h-[36px] text-sm text-white hover:bg-white/20 disabled:opacity-50 transition-colors duration-150 cursor-pointer"
-              >
-                <svg
-                  aria-hidden="true"
-                  className={`h-3.5 w-3.5 ${syncMutation.isPending ? 'animate-spin' : ''}`}
-                  fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-                {syncMutation.isPending ? 'Syncing…' : 'Refresh'}
-              </button>
-            )}
-            <Link
-              to="/demo"
-              className="text-sm text-white/80 hover:text-white transition-colors duration-150 cursor-pointer"
-            >
-              Demo
-            </Link>
-            <Link
-              to="/dashboard"
-              className="text-sm text-white/80 hover:text-white transition-colors duration-150 cursor-pointer"
-            >
-              Dashboard →
-            </Link>
-          </div>
-        </div>
-      </header>
-
+    <div>
       <div className="mx-auto max-w-5xl px-4 py-5">
         <div role="tablist" aria-label="Filter emails" className="flex gap-0.5 bg-muted rounded-xl p-1 mb-5 w-fit">
           {TABS.map((tab) => (

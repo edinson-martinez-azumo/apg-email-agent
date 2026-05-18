@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { demoApi } from '@/lib/api'
@@ -91,23 +90,6 @@ export function DemoPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-10 border-b border-border backdrop-blur-sm" style={{ backgroundColor: 'rgb(18, 118, 189)' }}>
-        <div className="mx-auto max-w-6xl px-4 py-3.5 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex flex-col items-start">
-              <img src="/APG-logo.svg" alt="APG Logo" className="h-8 w-auto" />
-              <span className="text-xs text-white/70 leading-none mt-0.5">Demo Cases</span>
-            </div>
-          </div>
-          <Link
-            to="/inbox"
-            className="text-sm text-white/80 hover:text-white transition-colors duration-150 cursor-pointer"
-          >
-            ← Inbox
-          </Link>
-        </div>
-      </header>
-
       <div className="mx-auto max-w-6xl px-4 py-6">
         <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 flex items-start gap-2.5">
           <span className="text-amber-500 mt-0.5">⚠</span>

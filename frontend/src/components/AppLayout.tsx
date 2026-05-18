@@ -1,0 +1,154 @@
+import React, { useState, useEffect, useCallback, useRef } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
+import { toast } from 'sonner'
+import { pollApi } from '@/lib/api'
+import { useEmails } from '@/hooks/useEmails'
+import { useSettings, useUpdateSettings } from '@/hooks/useSettings'
+import type { PollStatus } from '@/types/api'
+
+export function AppLayout({ children }: { children: React.ReactNode }) {
+  const navigate = useNavigate()
+  const location = useLocation()
+  const { data: settings, isLoading: settingsLoading } = useSettings()
+  const updateSettings = useUpdateSettings()
+  const { refetch: refetchEmails } = useEmails()
+  const [lastResult, setLastResult] = useState<PollStatus & { new_emails: number; processed_count: number } | null>(null)
+  const [lastPollAt, setLastPollAt] = useState<Date | null>(null)
+  const [error, setError] = useState<Error | null>(null)
+
+  const automatedMode = settings?.automated_mode ?? false
+  const intervalMs = (settings?.polling_interval_seconds ?? 60) * 1000
+  const intervalRef = useRef<number | null>(null)
+  const isFetchingRef = useRef(false)
+
+  const doPoll = useCallback(async () => {
+    if (isFetchingRef.current || !automatedMode) return
+    isFetchingRef.current = true
+
+    try {
+      const result = await pollApi.trigger()
+      setLastResult(result)
+      setLastPollAt(new Date())
+      setError(null)
+      await refetchEmails()
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error(String(err)))
+      setLastPollAt(new Date())
+      console.error('Poll failed:', err)
+    } finally {
+      isFetchingRef.current = false
+    }
+  }, [automatedMode, refetchEmails])
+
+  // Poll once on mount if automated mode is on
+  useEffect(() => {
+    if (!automatedMode) return
+    doPoll()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Set up polling interval
+  useEffect(() => {
+    if (!automatedMode) {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+        intervalRef.current = null
+      }
+      return
+    }
+
+    intervalRef.current = window.setInterval(doPoll, intervalMs)
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+        intervalRef.current = null
+      }
+    }
+  }, [automatedMode, intervalMs, doPoll])
+
+  const handleManualPoll = useCallback(async () => {
+    if (!automatedMode) {
+      toast.error('Enable automated mode first')
+      return
+    }
+    await doPoll()
+  }, [automatedMode, doPoll])
+
+  const handleToggleAutomated = useCallback(async (checked: boolean) => {
+    if (!settings) return
+    try {
+      await updateSettings.mutateAsync({ ...settings, automated_mode: checked })
+      toast.success(checked ? 'Automated mode enabled' : 'Automated mode disabled')
+    } catch {
+      toast.error('Failed to update settings')
+    }
+  }, [settings, updateSettings])
+
+  const handleIntervalChange = useCallback(async (value: number) => {
+    if (!settings) return
+    try {
+      await updateSettings.mutateAsync({ ...settings, polling_interval_seconds: value })
+      toast.success('Polling interval updated')
+    } catch {
+      toast.error('Failed to update interval')
+    }
+  }, [settings, updateSettings])
+
+  const secondsSinceLastPoll = lastPollAt
+    ? Math.floor((Date.now() - lastPollAt.getTime()) / 1000)
+    : null
+
+  return (
+    <div className="min-h-screen bg-background">
+      {/* Header with nav */}
+      <header className="sticky top-0 z-10 border-b border-border" style={{ backgroundColor: 'rgb(18, 118, 189)' }}>
+        <div className="mx-auto max-w-5xl px-4 py-3.5 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <img src="/APG-logo.svg" alt="APG Logo" className="h-8 w-auto" />
+            <nav className="flex items-center gap-1 ml-4">
+              {['/inbox', '/dashboard', '/demo', '/settings'].map(path => {
+                const labels: Record<string, string> = { '/inbox': 'Inbox', '/dashboard': 'Dashboard', '/demo': 'Demo', '/settings': 'Settings' }
+                return (
+                  <button
+                    key={path}
+                    onClick={() => navigate(path)}
+                    className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors duration-150 cursor-pointer ${
+                      location.pathname === path
+                        ? 'bg-white/20 text-white'
+                        : 'text-white/70 hover:text-white hover:bg-white/10'
+                    }`}
+                  >
+                    {labels[path]}
+                  </button>
+                )
+              })}
+            </nav>
+          </div>
+
+          {/* Polling status indicator */}
+          {automatedMode && !settingsLoading && (
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <div className="h-2.5 w-2.5 rounded-full bg-green-500" />
+                <span className="text-xs text-white/80">
+                  Auto-polling every {settings.polling_interval_seconds}s
+                  {secondsSinceLastPoll !== null && ` (${secondsSinceLastPoll}s ago)`}
+                </span>
+              </div>
+              <button
+                onClick={handleManualPoll}
+                className="text-white/80 hover:text-white transition-colors duration-150 cursor-pointer"
+                title="Manual poll"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              </button>
+            </div>
+          )}
+        </div>
+      </header>
+
+      <main>{children}</main>
+    </div>
+  )
+}

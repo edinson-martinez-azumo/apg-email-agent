@@ -2,15 +2,18 @@ import base64
 import datetime
 import json
 import re
+import uuid
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Any
 
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.db.models.app_setting import AppSetting
+from app.db.models.email import Email
 
 
 async def get_token(db: AsyncSession) -> dict:
@@ -19,6 +22,34 @@ async def get_token(db: AsyncSession) -> dict:
     if row is None:
         raise RuntimeError('Gmail not connected. Complete OAuth flow at /api/v1/auth/gmail')
     return json.loads(row.value)
+
+
+async def sync_emails(db: AsyncSession) -> dict:
+    """Pull unread Gmail messages and save new ones to DB. Returns {'imported': int, 'skipped': int}."""
+    token_data = await get_token(db)
+    messages = list_unread_messages(token_data, max_results=50)
+    imported = 0
+    skipped = 0
+
+    for stub in messages:
+        msg = get_message(token_data, stub['id'])
+        parsed = parse_message(msg)
+
+        existing = await db.scalar(select(Email).where(Email.gmail_id == parsed['gmail_id']))
+        if existing:
+            skipped += 1
+            continue
+
+        email = Email(id=str(uuid.uuid4()), status='pending', **parsed)
+        db.add(email)
+        try:
+            await db.flush()
+            imported += 1
+        except IntegrityError:
+            await db.rollback()
+            skipped += 1
+
+    return {'imported': imported, 'skipped': skipped, 'total_found': len(messages)}
 
 
 def _get_service(token_data: dict) -> Any:
