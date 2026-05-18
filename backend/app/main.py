@@ -1,14 +1,38 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
+import subprocess
+import os
+
 from app.core.config import settings
 from app.api.v1 import emails, drafts, auth, dashboard, products, demo, settings_api, poll
 from app.api import health
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Run Alembic migrations on startup
+    try:
+        result = subprocess.run(
+            ['uv', 'run', 'alembic', 'upgrade', 'head'],
+            cwd=os.path.join(os.path.dirname(__file__), '..'),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        if result.returncode == 0:
+            print(f'[migrations] {result.stdout.strip().splitlines()[-1]}')
+        else:
+            print(f'[migrations] WARNING: {result.stderr.strip()}')
+    except Exception as e:
+        print(f'[migrations] Migration skipped: {e}')
+    yield
 
 app = FastAPI(
     title='APG Email Agent API',
     version='1.0.0',
     docs_url='/api/docs',
     redoc_url='/api/redoc',
+    lifespan=lifespan,
 )
 
 app.add_middleware(
