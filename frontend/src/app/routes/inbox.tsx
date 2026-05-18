@@ -1,8 +1,7 @@
 import { useState, useMemo } from 'react'
-import { toast } from 'sonner'
 import { EmailRow } from '@/components/emails/EmailRow'
 import { ThreadRow } from '@/components/emails/ThreadRow'
-import { useEmails, useSyncEmails } from '@/hooks/useEmails'
+import { useEmails } from '@/hooks/useEmails'
 import type { Email } from '@/types/api'
 
 const TABS: { label: string; value: string | undefined }[] = [
@@ -32,17 +31,6 @@ export function InboxPage() {
   const [activeStatus, setActiveStatus] = useState<string | undefined>('pending')
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const { data, isLoading, isError } = useEmails(activeStatus)
-  const syncMutation = useSyncEmails()
-
-  const handleSync = async () => {
-    const t = toast.loading('Syncing emails…')
-    try {
-      const result = await syncMutation.mutateAsync()
-      toast.success(`Synced — ${result.imported} new email${result.imported !== 1 ? 's' : ''}`, { id: t })
-    } catch {
-      toast.error('Sync failed', { id: t })
-    }
-  }
 
   const handleToggle = (id: string) => {
     setExpandedId(prev => (prev === id ? null : id))
@@ -53,8 +41,6 @@ export function InboxPage() {
     setActiveStatus(value)
     setExpandedId(null)
   }
-
-  const pendingCount = data?.total ?? 0
 
   // Group emails by thread_id; singles stay as-is
   const threadGroups = useMemo(() => {

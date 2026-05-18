@@ -3,18 +3,14 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { toast } from 'sonner'
 import { pollApi } from '@/lib/api'
 import { useEmails } from '@/hooks/useEmails'
-import { useSettings, useUpdateSettings } from '@/hooks/useSettings'
-import type { PollStatus } from '@/types/api'
+import { useSettings } from '@/hooks/useSettings'
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate()
   const location = useLocation()
   const { data: settings, isLoading: settingsLoading } = useSettings()
-  const updateSettings = useUpdateSettings()
   const { refetch: refetchEmails } = useEmails()
-  const [lastResult, setLastResult] = useState<PollStatus & { new_emails: number; processed_count: number } | null>(null)
   const [lastPollAt, setLastPollAt] = useState<Date | null>(null)
-  const [error, setError] = useState<Error | null>(null)
 
   const automatedMode = settings?.automated_mode ?? false
   const intervalMs = (settings?.polling_interval_seconds ?? 60) * 1000
@@ -26,13 +22,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     isFetchingRef.current = true
 
     try {
-      const result = await pollApi.trigger()
-      setLastResult(result)
+      await pollApi.trigger()
       setLastPollAt(new Date())
-      setError(null)
       await refetchEmails()
     } catch (err) {
-      setError(err instanceof Error ? err : new Error(String(err)))
       setLastPollAt(new Date())
       console.error('Poll failed:', err)
     } finally {
@@ -73,26 +66,6 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     await doPoll()
   }, [automatedMode, doPoll])
 
-  const handleToggleAutomated = useCallback(async (checked: boolean) => {
-    if (!settings) return
-    try {
-      await updateSettings.mutateAsync({ ...settings, automated_mode: checked })
-      toast.success(checked ? 'Automated mode enabled' : 'Automated mode disabled')
-    } catch {
-      toast.error('Failed to update settings')
-    }
-  }, [settings, updateSettings])
-
-  const handleIntervalChange = useCallback(async (value: number) => {
-    if (!settings) return
-    try {
-      await updateSettings.mutateAsync({ ...settings, polling_interval_seconds: value })
-      toast.success('Polling interval updated')
-    } catch {
-      toast.error('Failed to update interval')
-    }
-  }, [settings, updateSettings])
-
   const secondsSinceLastPoll = lastPollAt
     ? Math.floor((Date.now() - lastPollAt.getTime()) / 1000)
     : null
@@ -125,7 +98,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           </div>
 
           {/* Polling status indicator */}
-          {automatedMode && !settingsLoading && (
+          {automatedMode && !settingsLoading && settings && (
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-2">
                 <div className="h-2.5 w-2.5 rounded-full bg-green-500" />
