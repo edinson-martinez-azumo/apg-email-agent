@@ -12,166 +12,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.db.models.app_setting import AppSetting
 
-APG_BLUE = '#00A3E7'
-APG_BLUE_DARK = '#1276BD'
-APG_BLACK = '#333333'
-APG_OFFWHITE = '#F5F9FC'
-APG_GRAY = '#666666'
-
-APG_GREEN = APG_BLUE  # alias kept for template compatibility
-
-HTML_TEMPLATE = """\
-<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background-color:#f4f4f2;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f2;padding:32px 16px;">
-    <tr><td align="center">
-      <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
-
-        <!-- Header -->
-        <tr>
-          <td style="background-color:{green};padding:24px 32px;">
-            <table width="100%" cellpadding="0" cellspacing="0">
-              <tr>
-                <td>
-                  <span style="font-size:20px;font-weight:700;color:#ffffff;letter-spacing:-0.3px;">APackaging Group</span>
-                  <br>
-                  <span style="font-size:12px;color:rgba(255,255,255,0.75);letter-spacing:0.5px;">PACKAGING SOLUTIONS</span>
-                </td>
-                <td align="right">
-                  <span style="font-size:11px;color:rgba(255,255,255,0.6);">apackaginggroup.com</span>
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-
-        <!-- Body -->
-        <tr>
-          <td style="padding:32px;">
-            <div style="font-size:15px;line-height:1.7;color:{black};">
-              {body_html}
-            </div>
-          </td>
-        </tr>
-
-        <!-- Divider -->
-        <tr>
-          <td style="padding:0 32px;">
-            <hr style="border:none;border-top:1px solid #e5e7eb;margin:0;">
-          </td>
-        </tr>
-
-        <!-- Footer / Signature -->
-        <tr>
-          <td style="padding:24px 32px;">
-            <table cellpadding="0" cellspacing="0">
-              <tr>
-                <td style="border-left:3px solid {green};padding-left:12px;">
-                  <p style="margin:0;font-size:14px;font-weight:600;color:{black};">APG Sales Team</p>
-                  <p style="margin:4px 0 0;font-size:13px;color:{gray};">APackaging Group</p>
-                  <p style="margin:4px 0 0;font-size:13px;">
-                    <a href="https://apackaginggroup.com" style="color:{green};text-decoration:none;">apackaginggroup.com</a>
-                  </p>
-                  <p style="margin:4px 0 0;font-size:12px;color:{gray};">Azusa, California</p>
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-
-        <!-- Bottom bar -->
-        <tr>
-          <td style="background-color:{offwhite};padding:14px 32px;border-top:1px solid #e5e7eb;">
-            <p style="margin:0;font-size:11px;color:{gray};text-align:center;">
-              This email was sent by APackaging Group ·
-              <a href="https://apackaginggroup.com" style="color:{green};text-decoration:none;">apackaginggroup.com</a>
-            </p>
-          </td>
-        </tr>
-
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>
-""".replace('{green}', APG_BLUE).replace('{black}', APG_BLACK).replace('{gray}', APG_GRAY).replace('{offwhite}', APG_OFFWHITE)
-
-
-def _text_to_html(text: str) -> str:
-    """Convert plain text draft (with basic markdown) to HTML for email."""
-    lines = text.split('\n')
-    html_lines = []
-    in_list = False
-
-    for line in lines:
-        # Table rows (| col | col |) — render as simple styled divs
-        if line.strip().startswith('|') and line.strip().endswith('|'):
-            if in_list:
-                html_lines.append('</ul>')
-                in_list = False
-            cells = [c.strip() for c in line.strip().strip('|').split('|')]
-            if all(set(c) <= set('- ') for c in cells):
-                continue  # skip separator row
-            row_html = ''.join(f'<td style="padding:6px 12px;border:1px solid #e5e7eb;font-size:13px;">{_inline_md(c)}</td>' for c in cells)
-            html_lines.append(f'<table style="border-collapse:collapse;width:100%;margin:8px 0;"><tr>{row_html}</tr></table>')
-            continue
-
-        # Markdown images: ![alt](url)
-        img_match = re.match(r'^!\[([^\]]*)\]\(([^)]+)\)\s*$', line.strip())
-        if img_match:
-            if in_list:
-                html_lines.append('</ul>')
-                in_list = False
-            alt, src = img_match.group(1), img_match.group(2)
-            html_lines.append(
-                f'<img src="{src}" alt="{alt}" '
-                f'style="display:block;max-width:200px;height:auto;margin:6px 0 10px;border-radius:6px;">'
-            )
-            continue
-
-        # Headings
-        if line.startswith('### '):
-            if in_list: html_lines.append('</ul>'); in_list = False
-            html_lines.append(f'<h3 style="margin:16px 0 6px;font-size:15px;font-weight:600;color:{APG_BLUE_DARK};">{_inline_md(line[4:])}</h3>')
-        elif line.startswith('## '):
-            if in_list: html_lines.append('</ul>'); in_list = False
-            html_lines.append(f'<h2 style="margin:20px 0 8px;font-size:17px;font-weight:600;color:{APG_BLUE_DARK};">{_inline_md(line[3:])}</h2>')
-        elif line.startswith('# '):
-            if in_list: html_lines.append('</ul>'); in_list = False
-            html_lines.append(f'<h1 style="margin:20px 0 8px;font-size:19px;font-weight:700;color:{APG_BLUE_DARK};">{_inline_md(line[2:])}</h1>')
-        # List items
-        elif re.match(r'^[-*]\s', line):
-            if not in_list:
-                html_lines.append('<ul style="margin:8px 0;padding-left:20px;">')
-                in_list = True
-            html_lines.append(f'<li style="margin:4px 0;font-size:15px;">{_inline_md(line[2:])}</li>')
-        # Empty line
-        elif line.strip() == '':
-            if in_list:
-                html_lines.append('</ul>')
-                in_list = False
-            html_lines.append('<br>')
-        # Normal paragraph
-        else:
-            if in_list:
-                html_lines.append('</ul>')
-                in_list = False
-            html_lines.append(f'<p style="margin:0 0 12px;">{_inline_md(line)}</p>')
-
-    if in_list:
-        html_lines.append('</ul>')
-
-    return '\n'.join(html_lines)
-
-
-def _inline_md(text: str) -> str:
-    """Convert inline markdown (**bold**, *italic*) to HTML."""
-    text = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', text)
-    text = re.sub(r'\*(.+?)\*', r'<em>\1</em>', text)
-    return text
-
 
 async def get_token(db: AsyncSession) -> dict:
     result = await db.execute(select(AppSetting).where(AppSetting.key == 'gmail_token'))
@@ -245,6 +85,81 @@ def _extract_body(payload: dict[str, Any]) -> str | None:
     return None
 
 
+def _inline_md(text: str) -> str:
+    text = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', text)
+    text = re.sub(r'\*(.+?)\*', r'<em>\1</em>', text)
+    return text
+
+
+def _text_to_html(text: str) -> str:
+    lines = text.split('\n')
+    html_lines = []
+    in_list = False
+
+    for line in lines:
+        if line.strip().startswith('|') and line.strip().endswith('|'):
+            if in_list:
+                html_lines.append('</ul>')
+                in_list = False
+            cells = [c.strip() for c in line.strip().strip('|').split('|')]
+            if all(set(c) <= set('- ') for c in cells):
+                continue
+            row_html = ''.join(f'<td style="padding:6px 12px;border:1px solid #e5e7eb;font-size:13px;">{_inline_md(c)}</td>' for c in cells)
+            html_lines.append(f'<table style="border-collapse:collapse;width:100%;margin:8px 0;"><tr>{row_html}</tr></table>')
+            continue
+
+        img_match = re.match(r'^!\[([^\]]*)\]\(([^)]+)\)\s*$', line.strip())
+        if img_match:
+            if in_list:
+                html_lines.append('</ul>')
+                in_list = False
+            alt, src = img_match.group(1), img_match.group(2)
+            html_lines.append(f'<img src="{src}" alt="{alt}" style="display:block;max-width:200px;height:auto;margin:6px 0 10px;border-radius:6px;">')
+            continue
+
+        if line.startswith('### '):
+            if in_list: html_lines.append('</ul>'); in_list = False
+            html_lines.append(f'<h3 style="margin:16px 0 6px;font-size:15px;font-weight:600;">{_inline_md(line[4:])}</h3>')
+        elif line.startswith('## '):
+            if in_list: html_lines.append('</ul>'); in_list = False
+            html_lines.append(f'<h2 style="margin:20px 0 8px;font-size:17px;font-weight:600;">{_inline_md(line[3:])}</h2>')
+        elif line.startswith('# '):
+            if in_list: html_lines.append('</ul>'); in_list = False
+            html_lines.append(f'<h1 style="margin:20px 0 8px;font-size:19px;font-weight:700;">{_inline_md(line[2:])}</h1>')
+        elif re.match(r'^[-*]\s', line):
+            if not in_list:
+                html_lines.append('<ul style="margin:8px 0;padding-left:20px;">')
+                in_list = True
+            html_lines.append(f'<li style="margin:4px 0;font-size:15px;">{_inline_md(line[2:])}</li>')
+        elif line.strip() == '':
+            if in_list:
+                html_lines.append('</ul>')
+                in_list = False
+            html_lines.append('<br>')
+        else:
+            if in_list:
+                html_lines.append('</ul>')
+                in_list = False
+            html_lines.append(f'<p style="margin:0 0 12px;">{_inline_md(line)}</p>')
+
+    if in_list:
+        html_lines.append('</ul>')
+
+    return '\n'.join(html_lines)
+
+
+def _html_to_text(html: str) -> str:
+    text = re.sub(r'<br\s*/?>', '\n', html, flags=re.IGNORECASE)
+    text = re.sub(r'</p>', '\n', text, flags=re.IGNORECASE)
+    text = re.sub(r'<li[^>]*>', '- ', text, flags=re.IGNORECASE)
+    text = re.sub(r'</li>', '\n', text, flags=re.IGNORECASE)
+    text = re.sub(r'</(ul|ol|h[1-6]|div|tr|table)>', '\n', text, flags=re.IGNORECASE)
+    text = re.sub(r'<img[^>]*>', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'<[^>]+>', '', text)
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    return text.strip()
+
+
 async def send_reply(
     token_data: dict,
     original_gmail_id: str,
@@ -265,15 +180,6 @@ async def send_reply(
     thread_id = original.get('threadId', '')
     reply_subject = f"Re: {subject}" if not subject.startswith('Re:') else subject
 
-    # Build multipart email with plain text + HTML
-    mime = MIMEMultipart('alternative')
-    mime['to'] = to_email
-    mime['subject'] = reply_subject
-    if message_id_header:
-        mime['In-Reply-To'] = message_id_header
-        mime['References'] = message_id_header
-
-    # Remove Claude's own signature line if present (we add our own)
     clean_body = re.sub(
         r'\n?APG Sales Team\s*\|.*?apackaginggroup\.com.*$',
         '',
@@ -283,14 +189,26 @@ async def send_reply(
 
     if clean_body.strip().startswith('<'):
         inner_html = clean_body
-        plain_text = re.sub(r'<[^>]+>', ' ', clean_body)
-        plain_text = re.sub(r'\s+', ' ', plain_text).strip()
+        plain_text = _html_to_text(clean_body)
     else:
         inner_html = _text_to_html(clean_body)
         plain_text = clean_body
 
+    html_body = (
+        '<!DOCTYPE html><html><head><meta charset="UTF-8"></head>'
+        '<body style="font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,sans-serif;'
+        'font-size:15px;line-height:1.7;color:#333333;max-width:600px;">'
+        f'{inner_html}'
+        '</body></html>'
+    )
+
+    mime = MIMEMultipart('alternative')
+    mime['to'] = to_email
+    mime['subject'] = reply_subject
+    if message_id_header:
+        mime['In-Reply-To'] = message_id_header
+        mime['References'] = message_id_header
     mime.attach(MIMEText(plain_text, 'plain'))
-    html_body = HTML_TEMPLATE.replace('{body_html}', inner_html)
     mime.attach(MIMEText(html_body, 'html'))
 
     raw = base64.urlsafe_b64encode(mime.as_bytes()).decode()

@@ -54,8 +54,6 @@ class PreviewRequest(BaseModel):
 
 @router.post('/{draft_id}/preview', response_class=HTMLResponse)
 async def preview_draft(draft_id: str, payload: PreviewRequest, db: DB):
-    from app.services.gmail_service import _text_to_html, HTML_TEMPLATE
-
     draft = await db.get(Draft, draft_id)
     if not draft:
         raise HTTPException(status_code=404, detail='Draft not found')
@@ -67,12 +65,17 @@ async def preview_draft(draft_id: str, payload: PreviewRequest, db: DB):
         flags=re.IGNORECASE | re.DOTALL,
     ).strip()
 
+    from app.services.gmail_service import _text_to_html
+
     inner_html = clean_body if clean_body.strip().startswith('<') else _text_to_html(clean_body)
-    html = HTML_TEMPLATE.replace('{body_html}', inner_html)
-    # Inject img size cap so preview never scrolls due to oversized images
-    html = html.replace(
-        '</head>',
-        '<style>img{max-width:180px!important;height:auto!important;}</style></head>',
+
+    html = (
+        '<!DOCTYPE html><html><head><meta charset="UTF-8">'
+        '<meta name="viewport" content="width=device-width,initial-scale=1">'
+        '<style>body{font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,sans-serif;'
+        'font-size:15px;line-height:1.7;color:#333333;max-width:600px;margin:24px auto;padding:0 16px;}'
+        'img{max-width:180px!important;height:auto!important;}</style></head>'
+        f'<body>{inner_html}</body></html>'
     )
     return HTMLResponse(content=html)
 
