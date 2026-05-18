@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
-from app.api.v1 import emails, drafts, auth, dashboard, products, demo, settings_api, poll
+from app.api.v1 import emails, drafts, auth, dashboard, products, demo, settings_api, poll, migrate
 from app.api import health
 
 app = FastAPI(
