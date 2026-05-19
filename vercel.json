@@ -11,9 +11,6 @@
       "config": { "distDir": "dist" }
     }
   ],
-  "build": {
-    "command": "cd backend && uv sync && uv run alembic upgrade head"
-  },
   "routes": [
     { "src": "/api/(.*)", "dest": "backend/api/index.py" },
     { "src": "/(.*\\.[a-zA-Z0-9]+)", "dest": "frontend/$1" },
