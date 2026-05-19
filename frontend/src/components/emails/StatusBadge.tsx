@@ -3,6 +3,7 @@ import type { Email } from '@/types/api'
 
 const STATUS_CONFIG: Record<Email['status'], { label: string; className: string }> = {
   pending:    { label: 'Pending',    className: 'bg-status-pending-bg text-status-pending-fg' },
+  reviewed:   { label: 'Reviewed',   className: 'bg-status-reviewed-bg text-status-reviewed-fg' },
   draft_ready:{ label: 'Draft Ready',className: 'bg-status-draft-bg text-status-draft-fg' },
   approved:   { label: 'Approved',   className: 'bg-status-approved-bg text-status-approved-fg' },
   sent:       { label: 'Sent',       className: 'bg-status-sent-bg text-status-sent-fg' },

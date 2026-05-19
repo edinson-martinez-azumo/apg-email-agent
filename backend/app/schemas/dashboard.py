@@ -5,6 +5,7 @@ from datetime import datetime
 class DashboardStats(BaseModel):
     total_emails: int
     pending: int
+    reviewed: int
     drafts_sent: int
     avg_response_time_hours: float | None
 

@@ -314,6 +314,7 @@ def _row_to_dict(r) -> dict:
         'price_100k': r['price_100k'] or '',
         'image_url': r['image_url'] or '',
         'search_text': (r['search_text'] or '') if 'search_text' in r else '',
+        'score': float(r['score']) if 'score' in r else None,
     }
 
 

@@ -41,6 +41,8 @@
     /* Status semantic colors — OKLCH for perceptual uniformity */
     --status-pending-bg: oklch(94% 0.07 75);
     --status-pending-fg: oklch(37% 0.16 55);
+    --status-reviewed-bg: oklch(93% 0.07 85);
+    --status-reviewed-fg: oklch(35% 0.15 85);
     --status-draft-bg: oklch(92% 0.06 235);
     --status-draft-fg: oklch(36% 0.13 240);
     --status-sent-bg: oklch(91% 0.07 155);

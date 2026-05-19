@@ -3,7 +3,7 @@ import datetime
 import json
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select, func
+from sqlalchemy import select, func, text
 from app.core.deps import DB
 from app.db.models.email import Email
 from app.db.models.draft import Draft
@@ -36,6 +36,12 @@ class AddProductRequest(BaseModel):
 
 class GenerateWithProductsRequest(BaseModel):
     products: list[str] = []
+
+
+class AnalyzeResponse(BaseModel):
+    intent: list['CustomerIntentItem']
+    products: list['DetectedProductItem']
+    model_config = {'from_attributes': True}
 
 
 @router.get('/', response_model=EmailListResponse)
@@ -147,11 +153,51 @@ async def generate_draft_for_email(email_id: str, db: DB):
     confirmed_matches = existing_validation.scalars().all()
 
     if confirmed_matches:
-        # Use only confirmed products
+        # Use only confirmed products — resolve product details for ALL confirmed SKUs
+        # so that user-added products not in the embedding top-12 are still included.
         query = f"{email.subject or ''} {email.body_text or ''}".strip()
         all_products = await search_products(query, db, top_k=12)
         confirmed_skus = {m.sku for m in confirmed_matches}
+
+        # Start with embedding results that are confirmed
         products = [p for p in all_products if p['sku'] in confirmed_skus]
+
+        # Fill in any confirmed SKUs that were not in the embedding search results
+        all_products_skus = {p['sku'] for p in all_products}
+        missing_skus = confirmed_skus - all_products_skus
+        if missing_skus:
+            placeholders = ', '.join(f"'{s}'" for s in missing_skus)
+            result = await db.execute(text(f"""
+                SELECT sku, title, type, materials, moq, capacities,
+                       price_base, price_10k, price_25k, price_50k, price_100k,
+                       in_stock, image_url, search_text
+                FROM product_embeddings_v2
+                WHERE sku IN ({placeholders})
+            """))
+            for row in result.mappings():
+                products.append({
+                    'sku': row['sku'],
+                    'title': row['title'] or '',
+                    'type': row['type'] or '',
+                    'materials': row['materials'] or '',
+                    'moq': row['moq'] or '',
+                    'capacities': row['capacities'] or '',
+                    'in_stock': bool(row['in_stock']),
+                    'price_base': row['price_base'] or '',
+                    'price_10k': row['price_10k'] or '',
+                    'price_25k': row['price_25k'] or '',
+                    'price_50k': row['price_50k'] or '',
+                    'price_100k': row['price_100k'] or '',
+                    'image_url': row['image_url'] or '',
+                    'search_text': row.get('search_text') or '',
+                })
+
+        if not products:
+            # Fallback: if somehow all products were filtered out, use full search
+            try:
+                products = await search_products(query, db, top_k=12)
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f'search_products error: {type(e).__name__}: {e}')
     else:
         products = []
 
@@ -284,6 +330,7 @@ class DetectedProductItem(BaseModel):
     title: str | None
     score: float | None
     status: str | None
+    image_url: str | None
 
 
 class CustomerIntentItem(BaseModel):
@@ -309,6 +356,17 @@ async def get_detected_products(email_id: str, db: DB):
     )
     all_matches = result.scalars().all()
 
+    # Build a map of sku -> image_url from product embeddings
+    skus = [m.sku for m in all_matches]
+    image_map: dict[str, str | None] = {}
+    if skus:
+        placeholders = ', '.join(f"'{s}'" for s in skus)
+        img_result = await db.execute(
+            text("SELECT sku, image_url FROM product_embeddings_v2 WHERE sku IN ({})".format(placeholders))
+        )
+        for row in img_result:
+            image_map[row.sku] = row.image_url
+
     products = []
     for match in all_matches:
         products.append(DetectedProductItem(
@@ -316,6 +374,7 @@ async def get_detected_products(email_id: str, db: DB):
             title=match.title,
             score=match.score,
             status=match.status,
+            image_url=image_map.get(match.sku),
         ))
 
     # Get customer intent bullets (cached if available)
@@ -406,8 +465,8 @@ async def validate_products(email_id: str, body: ValidateProductsRequest, db: DB
                 ProductMatch.sku == sku,
             )
         )
-        match = result.scalar_one_or_none()
-        if match:
+        matches = result.scalars().all()
+        for match in matches:
             match.status = 'confirmed'
 
     for sku in body.rejected:
@@ -417,8 +476,8 @@ async def validate_products(email_id: str, body: ValidateProductsRequest, db: DB
                 ProductMatch.sku == sku,
             )
         )
-        match = result.scalar_one_or_none()
-        if match:
+        matches = result.scalars().all()
+        for match in matches:
             match.status = 'rejected'
 
     await db.commit()
@@ -574,3 +633,210 @@ async def generate_with_products(email_id: str, body: GenerateWithProductsReques
     await db.commit()
 
     return {'status': 'ok', 'draft_preview': draft_body[:200]}
+
+
+# ─── Analyze & Re-analyze endpoints ────────────────────────────────────────────
+
+
+@router.post('/{email_id}/analyze', response_model=AnalyzeResponse)
+async def analyze_email(email_id: str, db: DB):
+    """
+    Run AI analysis on an email:
+    1. Extract customer intent (bullet points)
+    2. Detect products via embedding search
+    Sets email status to 'reviewed' so it appears in the review panel.
+    """
+    email = await db.get(Email, email_id)
+    if not email:
+        raise HTTPException(status_code=404, detail='Email not found')
+
+    # Only analyze emails in 'pending' or 'reviewed' status
+    if email.status not in ('pending', 'reviewed'):
+        raise HTTPException(
+            status_code=400,
+            detail=f'Email must be in pending or reviewed status, current: {email.status}',
+        )
+
+    # Step 1: Extract intent (uses cached version if available)
+    intent_result = await db.execute(
+        select(AuditLog).where(
+            AuditLog.email_id == email_id,
+            AuditLog.action == 'intent_extracted',
+        ).order_by(AuditLog.created_at.desc()).limit(1)
+    )
+    intent_entry = intent_result.scalar_one_or_none()
+
+    intent = []
+    if intent_entry and intent_entry.detail:
+        intent_data = intent_entry.detail
+        if isinstance(intent_data, str):
+            try:
+                parsed = json.loads(intent_data)
+                if isinstance(parsed, list):
+                    intent = [CustomerIntentItem(text=str(b)) for b in parsed]
+                elif isinstance(parsed, dict) and 'bullets' in parsed:
+                    intent = [CustomerIntentItem(text=str(b)) for b in parsed['bullets']]
+            except (json.JSONDecodeError, TypeError):
+                pass
+        elif isinstance(intent_data, list):
+            intent = [CustomerIntentItem(text=str(b)) for b in intent_data]
+
+    if not intent:
+        # Extract via Claude Haiku
+        import anthropic
+        from app.core.config import settings
+
+        client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+        prompt = (
+            "Extract what the customer is asking for in 3–5 bullet points.\n"
+            "Focus on: product type, capacity/size, material, quantity, special requirements.\n"
+            "Return ONLY bullet points, one per line, starting with '- '.\n"
+            "Be specific and concise. No explanation. No intro line.\n\n"
+            f"Subject: {email.subject or ''}\n\n{email.body_text or ''}"
+        )
+        response = await client.messages.create(
+            model='claude-haiku-4-5-20251001',
+            max_tokens=200,
+            messages=[{'role': 'user', 'content': prompt}],
+        )
+        text = response.content[0].text.strip()
+        bullets = [l[2:].strip() for l in text.splitlines() if l.strip().startswith('- ')]
+
+        # Cache the result
+        db.add(AuditLog(
+            id=str(uuid.uuid4()),
+            email_id=email_id,
+            action='intent_extracted',
+            detail=json.dumps(bullets),
+            created_at=datetime.datetime.now(datetime.timezone.utc),
+        ))
+
+        intent = [CustomerIntentItem(text=str(b)) for b in bullets]
+
+    # Step 2: Detect products via embedding search
+    from app.services.embedding_service import search_products
+    try:
+        query = f"{email.subject or ''} {email.body_text or ''}".strip()
+        products = await search_products(query, db, top_k=12)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f'search_products error: {type(e).__name__}: {e}')
+
+    # Save product matches
+    for p in products:
+        existing = await db.execute(
+            select(ProductMatch).where(
+                ProductMatch.email_id == email_id,
+                ProductMatch.sku == p['sku'],
+            )
+        )
+        matches = existing.scalars().all()
+        match = matches[0] if matches else None
+        if match:
+            match.score = p['score']
+            match.title = p['title']
+        else:
+            db.add(ProductMatch(
+                id=str(uuid.uuid4()),
+                email_id=email_id,
+                sku=p['sku'],
+                title=p['title'],
+                score=p['score'],
+            ))
+
+    # Step 3: Set status to reviewed
+    email.status = 'reviewed'
+
+    await db.commit()
+
+    # Build response
+    result = await db.execute(
+        select(ProductMatch).where(ProductMatch.email_id == email_id)
+    )
+    all_matches = result.scalars().all()
+
+    detected_products = [
+        DetectedProductItem(
+            sku=match.sku,
+            title=match.title,
+            score=match.score,
+            status=match.status,
+            image_url=match.image_url if hasattr(match, 'image_url') else None,
+        )
+        for match in all_matches
+    ]
+
+    return AnalyzeResponse(intent=intent, products=detected_products)
+
+
+@router.post('/{email_id}/re-analyze')
+async def re_analyze_email(email_id: str, db: DB):
+    """
+    Reset email from reviewed back to pending, clearing product matches
+    so they can be re-extracted after user modifications.
+    """
+    email = await db.get(Email, email_id)
+    if not email:
+        raise HTTPException(status_code=404, detail='Email not found')
+
+    if email.status != 'reviewed':
+        raise HTTPException(
+            status_code=400,
+            detail=f'Email must be in reviewed status, current: {email.status}',
+        )
+
+    # Clear product matches (set to None for re-extraction)
+    result = await db.execute(
+        select(ProductMatch).where(ProductMatch.email_id == email_id)
+    )
+    all_matches = result.scalars().all()
+    for match in all_matches:
+        match.status = None
+
+    # Also clear cached intent
+    await db.execute(
+        AuditLog.__table__.delete().where(
+            (AuditLog.email_id == email_id) &
+            (AuditLog.action == 'intent_extracted')
+        )
+    )
+
+    email.status = 'pending'
+    await db.commit()
+
+    return {'status': 'ok', 'message': 'Email reset to pending state'}
+
+
+@router.post('/{email_id}/back-to-reviewed')
+async def back_to_reviewed(email_id: str, db: DB):
+    """
+    Reset email from draft_ready back to reviewed.
+    - Changes status to 'reviewed'
+    - Discards the existing draft (so user can regenerate fresh)
+    - Does NOT touch ProductMatch records (confirmed products are preserved)
+    """
+    email = await db.get(Email, email_id)
+    if not email:
+        raise HTTPException(status_code=404, detail='Email not found')
+
+    if email.status != 'draft_ready':
+        raise HTTPException(
+            status_code=400,
+            detail=f'Email must be in draft_ready status, current: {email.status}',
+        )
+
+    # Delete the existing draft
+    result = await db.execute(select(Draft).where(Draft.email_id == email_id))
+    draft = result.scalar_one_or_none()
+    if draft:
+        await db.delete(draft)
+
+    email.status = 'reviewed'
+    db.add(AuditLog(
+        id=str(uuid.uuid4()),
+        email_id=email_id,
+        action='back_to_reviewed',
+        created_at=datetime.datetime.now(datetime.timezone.utc),
+    ))
+    await db.commit()
+
+    return {'status': 'ok', 'message': 'Email moved back to reviewed'}

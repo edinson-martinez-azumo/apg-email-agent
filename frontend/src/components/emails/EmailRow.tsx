@@ -6,7 +6,7 @@ import { StatusBadge } from './StatusBadge'
 import { formatRelativeTime } from '@/lib/utils'
 import type { Email } from '@/types/api'
 import { useDraftByEmail, useApproveDraft, useSendDraft, useDiscardDraft } from '@/hooks/useDrafts'
-import { useGenerateDraft, useDiscardEmail } from '@/hooks/useEmails'
+import { useGenerateDraft, useDiscardEmail, useAnalyzeEmail, useReAnalyzeEmail, useBackToReviewed } from '@/hooks/useEmails'
 import { draftsApi } from '@/lib/api'
 import { PreviewModal } from '@/components/drafts/PreviewModal'
 import { CustomerIntent } from '@/components/drafts/CustomerIntent'
@@ -71,6 +71,7 @@ export function EmailRow({ email, isExpanded, onToggle, hideHeader = false, read
       {(isExpanded || hideHeader) && (
         <div className={hideHeader ? '' : 'border-t border-border animate-in fade-in duration-150'}>
           {email.status === 'pending' && <PendingContent email={email} />}
+          {email.status === 'reviewed' && <ReviewedContent email={email} />}
           {(email.status === 'draft_ready' || email.status === 'approved') && (
             <DraftContent email={email} readOnly={readOnly} />
           )}
@@ -85,15 +86,15 @@ export function EmailRow({ email, isExpanded, onToggle, hideHeader = false, read
 // ─── Pending ──────────────────────────────────────────────────────────────────
 
 function PendingContent({ email }: { email: Email }) {
-  const generate = useGenerateDraft()
+  const analyze = useAnalyzeEmail()
   const discard = useDiscardEmail()
   const [discardConfirm, setDiscardConfirm] = useState(false)
 
-  const handleGenerate = () => {
-    const t = toast.loading('Generating AI draft…')
-    generate.mutate(email.id, {
-      onSuccess: () => toast.success('Draft ready', { id: t }),
-      onError: () => toast.error('Failed to generate draft', { id: t }),
+  const handleAnalyze = () => {
+    const t = toast.loading('Analyzing email…')
+    analyze.mutate(email.id, {
+      onSuccess: () => toast.success('Email ready for review', { id: t }),
+      onError: () => toast.error('Failed to analyze email', { id: t }),
     })
   }
 
@@ -139,6 +140,126 @@ function PendingContent({ email }: { email: Email }) {
           )}
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={handleAnalyze}
+            disabled={analyze.isPending}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 min-h-[40px] text-sm font-medium text-primary-foreground hover:opacity-90 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity duration-150 cursor-pointer"
+          >
+            {analyze.isPending ? (
+              <>
+                <span className="h-3 w-3 rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground animate-spin" />
+                Analyzing…
+              </>
+            ) : (
+              <>
+                <svg aria-hidden="true" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                </svg>
+                Analyze
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Reviewed — show intent + products, allow generate or go back ──────────────
+
+function ReviewedContent({ email }: { email: Email }) {
+  const generate = useGenerateDraft()
+  const reAnalyze = useReAnalyzeEmail()
+  const discard = useDiscardEmail()
+  const [discardConfirm, setDiscardConfirm] = useState(false)
+
+  const handleGenerate = () => {
+    const t = toast.loading('Generating AI draft…')
+    generate.mutate(email.id, {
+      onSuccess: () => toast.success('Draft ready', { id: t }),
+      onError: () => toast.error('Failed to generate draft', { id: t }),
+    })
+  }
+
+  const handleReAnalyze = () => {
+    const t = toast.loading('Resetting analysis…')
+    reAnalyze.mutate(email.id, {
+      onSuccess: () => toast.success('Email reset to pending', { id: t }),
+      onError: () => toast.error('Failed to reset', { id: t }),
+    })
+  }
+
+  const handleDiscard = async () => {
+    const t = toast.loading('Discarding email…')
+    try {
+      await discard.mutateAsync(email.id)
+      toast.success('Email discarded', { id: t })
+      setDiscardConfirm(false)
+    } catch {
+      toast.error('Failed to discard', { id: t })
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_352px] gap-4">
+        {/* Left column: CustomerIntent + Email */}
+        <div className="flex flex-col gap-4">
+          <div className="border-b border-border">
+            <CustomerIntent emailId={email.id} />
+          </div>
+
+          <div className="rounded-lg border border-border bg-muted/20">
+            <div className="px-3 py-2 border-b border-border">
+              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Customer Email</span>
+            </div>
+            <EmailMeta email={email} />
+            <EmailBody text={email.body_text} />
+          </div>
+        </div>
+
+        {/* Right column: Products panel - full height */}
+        <div>
+          <DetachedProductsPanel emailId={email.id} />
+        </div>
+      </div>
+
+      {/* Actions bar */}
+      <div className="border-t border-border px-5 py-3 flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-2">
+          {discardConfirm ? (
+            <>
+              <button
+                onClick={() => setDiscardConfirm(false)}
+                className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted transition-colors duration-150 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDiscard}
+                className="rounded-lg border border-destructive bg-destructive/5 px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive hover:text-white transition-colors duration-150 cursor-pointer"
+              >
+                Confirm discard
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => setDiscardConfirm(true)}
+              className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:border-destructive hover:text-destructive transition-colors duration-150 cursor-pointer"
+            >
+              Discard
+            </button>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleReAnalyze}
+            disabled={reAnalyze.isPending}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-150 cursor-pointer"
+          >
+            {reAnalyze.isPending ? 'Resetting…' : '↺ Back to Pending'}
+          </button>
           <button
             onClick={handleGenerate}
             disabled={generate.isPending}
@@ -195,6 +316,7 @@ function DraftContent({ email, readOnly = false }: { email: Email; readOnly?: bo
   const sendDraft = useSendDraft()
   const discardDraft = useDiscardDraft()
   const generate = useGenerateDraft()
+  const backToReviewed = useBackToReviewed()
 
   const isSending = approveDraft.isPending || sendDraft.isPending
 
@@ -241,20 +363,18 @@ function DraftContent({ email, readOnly = false }: { email: Email; readOnly?: bo
     })
   }
 
+  const handleBackToReviewed = () => {
+    const t = toast.loading('Moving back to Reviewed…')
+    backToReviewed.mutate(email.id, {
+      onSuccess: () => toast.success('Moved back to Reviewed', { id: t }),
+      onError: () => toast.error('Failed to move back', { id: t }),
+    })
+  }
+
   const draftBody = draft?.edited_body ?? draft?.body ?? ''
 
   return (
     <div>
-      <div className="px-5 pt-4 pb-3 border-b border-border">
-        <CustomerIntent emailId={email.id} confidenceScore={draft?.confidence_score} />
-      </div>
-
-      {draft && (
-        <div className="px-5 py-3">
-          <DetachedProductsPanel emailId={email.id} />
-        </div>
-      )}
-
       <div className="grid lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-border">
         <div className="px-5 pt-4 pb-5">
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
@@ -319,6 +439,17 @@ function DraftContent({ email, readOnly = false }: { email: Email; readOnly?: bo
                 className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:border-destructive hover:text-destructive disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-150 cursor-pointer"
               >
                 Discard
+              </button>
+              <button
+                onClick={handleBackToReviewed}
+                disabled={backToReviewed.isPending || !draft}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-150 cursor-pointer"
+              >
+                {backToReviewed.isPending
+                  ? <span className="h-3 w-3 rounded-full border-2 border-foreground/30 border-t-foreground animate-spin" />
+                  : <span aria-hidden="true">↩</span>
+                }
+                {backToReviewed.isPending ? 'Moving…' : 'Back to Reviewed'}
               </button>
               <button
                 onClick={handleRegenerate}
@@ -443,22 +574,24 @@ function DiscardedContent({ email }: { email: Email }) {
 
 function EmailMeta({ email }: { email: Email }) {
   return (
-    <div className="mb-3 space-y-0.5">
-      <p className="text-xs text-muted-foreground">
-        <span className="font-medium text-foreground/70">From: </span>
-        {email.from_name ? `${email.from_name} <${email.from_email}>` : email.from_email}
-      </p>
-      <p className="text-xs text-muted-foreground">
-        <span className="font-medium text-foreground/70">Subject: </span>
-        {email.subject ?? '(no subject)'}
-      </p>
+    <div className="px-3 py-2 border-b border-border space-y-0.5">
+      <div className="flex items-center gap-1.5">
+        <span className="text-xs font-medium text-muted-foreground shrink-0">From:</span>
+        <span className="text-xs text-foreground/80 break-all">
+          {email.from_name ? `${email.from_name} <${email.from_email}>` : email.from_email}
+        </span>
+      </div>
+      <div className="flex items-start gap-1.5">
+        <span className="text-xs font-medium text-muted-foreground shrink-0">Subject:</span>
+        <span className="text-xs text-foreground/80">{email.subject ?? '(no subject)'}</span>
+      </div>
     </div>
   )
 }
 
 function EmailBody({ text }: { text: string | null }) {
   return (
-    <div className="max-h-52 overflow-y-auto rounded-lg bg-muted/30 px-3 py-2.5">
+    <div className="px-3 py-2.5 max-h-52 overflow-y-auto">
       <pre className="text-sm whitespace-pre-wrap font-sans text-foreground/80 leading-relaxed">
         {text ?? '(no body)'}
       </pre>

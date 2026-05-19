@@ -6,6 +6,7 @@ import type { Email } from '@/types/api'
 
 const TABS: { label: string; value: string | undefined }[] = [
   { label: 'Pending', value: 'pending' },
+  { label: 'Reviewed', value: 'reviewed' },
   { label: 'Draft Ready', value: 'draft_ready' },
   { label: 'Sent', value: 'sent' },
   { label: 'All', value: undefined },

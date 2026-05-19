@@ -55,3 +55,36 @@ export function useDiscardEmail() {
     },
   })
 }
+
+export function useAnalyzeEmail() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (emailId: string) => emailsApi.analyze(emailId),
+    onSuccess: (_, emailId) => {
+      qc.invalidateQueries({ queryKey: ['emails'] })
+      qc.invalidateQueries({ queryKey: ['emails', emailId, 'detected-products'] })
+    },
+  })
+}
+
+export function useReAnalyzeEmail() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (emailId: string) => emailsApi.reAnalyze(emailId),
+    onSuccess: (_, emailId) => {
+      qc.invalidateQueries({ queryKey: ['emails'] })
+      qc.invalidateQueries({ queryKey: ['emails', emailId, 'detected-products'] })
+    },
+  })
+}
+
+export function useBackToReviewed() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (emailId: string) => emailsApi.backToReviewed(emailId),
+    onSuccess: (_, emailId) => {
+      qc.invalidateQueries({ queryKey: ['emails'] })
+      qc.invalidateQueries({ queryKey: ['drafts', 'by-email', emailId] })
+    },
+  })
+}

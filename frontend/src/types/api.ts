@@ -17,7 +17,7 @@ export interface Email {
   subject: string | null
   body_text: string | null
   received_at: string
-  status: 'pending' | 'draft_ready' | 'approved' | 'sent' | 'discarded'
+  status: 'pending' | 'reviewed' | 'draft_ready' | 'approved' | 'sent' | 'discarded'
   created_at: string
   thread: ThreadEmail[]
 }

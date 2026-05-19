@@ -14,6 +14,9 @@ async def get_stats(db: DB):
     pending = await db.scalar(
         select(func.count()).select_from(Email).where(Email.status == 'pending')
     ) or 0
+    reviewed = await db.scalar(
+        select(func.count()).select_from(Email).where(Email.status == 'reviewed')
+    ) or 0
     sent = await db.scalar(
         select(func.count()).select_from(Email).where(Email.status == 'sent')
     ) or 0
@@ -44,6 +47,7 @@ async def get_stats(db: DB):
         stats=DashboardStats(
             total_emails=total,
             pending=pending,
+            reviewed=reviewed,
             drafts_sent=sent,
             avg_response_time_hours=None,
         ),

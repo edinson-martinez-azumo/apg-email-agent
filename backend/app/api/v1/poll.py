@@ -22,7 +22,8 @@ router = APIRouter()
 
 class PollResponse(BaseModel):
     new_emails: int
-    processed_count: int
+    reviewed_count: int
+    generated_count: int
     status: str
     message: str
 
@@ -33,7 +34,7 @@ class PollStatusResponse(BaseModel):
     auto_send: bool
     polling_interval_seconds: int
     last_poll_at: datetime | None
-    pending_count: int
+    reviewed_count: int
 
 
 @router.get('/poll/status', response_model=PollStatusResponse)
@@ -61,11 +62,11 @@ async def get_poll_status(db: DB):
     last_poll = last_result.scalar_one_or_none()
     last_poll_at = last_poll.created_at if last_poll else None
 
-    # Get pending count
-    pending_result = await db.execute(
-        select(func.count()).select_from(Email).where(Email.status == 'pending')
+    # Get reviewed count
+    reviewed_result = await db.execute(
+        select(func.count()).select_from(Email).where(Email.status == 'reviewed')
     )
-    pending_count = pending_result.scalar() or 0
+    reviewed_count = reviewed_result.scalar() or 0
 
     return PollStatusResponse(
         auto_sync=auto_sync,
@@ -73,7 +74,7 @@ async def get_poll_status(db: DB):
         auto_send=auto_send,
         polling_interval_seconds=poll_interval,
         last_poll_at=last_poll_at,
-        pending_count=pending_count,
+        reviewed_count=reviewed_count,
     )
 
 
@@ -112,38 +113,54 @@ async def poll_emails(db: DB):
             await db.rollback()
             return PollResponse(
                 new_emails=0,
-                processed_count=0,
+                generated_count=0,
                 status='error',
                 message=f'Sync failed: {str(e)}',
             )
 
-    # Get pending emails
-    pending_result = await db.execute(
-        select(Email).where(Email.status == 'pending').order_by(Email.received_at.asc())
-    )
-    pending_emails = pending_result.scalars().all()
-
-    if not pending_emails:
-        status = 'clean' if sync_count == 0 else 'synced'
-        return PollResponse(
-            new_emails=len(pending_emails),
-            processed_count=0,
-            status=status,
-            message='No pending emails found.' if sync_count == 0 else f'Synced {sync_count} batch(es). No pending emails.',
-        )
-
-    # Step 2: Generate drafts for pending emails (if auto_generate is ON)
+    # Step 2: Auto-analyze pending emails (transition to reviewed) + generate drafts
+    reviewed_count = 0
     generated_count = 0
     if auto_generate:
-        generated_count, errors = await _generate_drafts(db, pending_emails)
+        # 2a: Analyze pending → reviewed
+        reviewed_count, analyze_errors = await _auto_analyze_emails(db)
+        if analyze_errors:
+            for err in analyze_errors:
+                logger.warning(f'Auto-analyze error: {err}')
+
+        # 2b: Generate drafts from reviewed → draft_ready
+        reviewed_result = await db.execute(
+            select(Email).where(
+                Email.status == 'reviewed'
+            ).order_by(Email.received_at.asc())
+        )
+        reviewed_emails = reviewed_result.scalars().all()
+
+        if reviewed_emails:
+            generated_count, gen_errors = await _generate_drafts(db, reviewed_emails)
+            if gen_errors:
+                for err in gen_errors:
+                    logger.warning(f'Auto-generate error: {err}')
         await db.commit()
     else:
         await db.commit()
+
+    # Get reviewed emails (for status message)
+    reviewed_result = await db.execute(
+        select(Email).where(
+            Email.status == 'reviewed'
+        ).order_by(Email.received_at.asc())
+    )
+    reviewed_emails = reviewed_result.scalars().all()
+
+    if not reviewed_emails and generated_count == 0:
+        status = 'clean' if sync_count == 0 and reviewed_count == 0 else 'synced'
         return PollResponse(
-            new_emails=len(pending_emails),
-            processed_count=0,
-            status='synced' if sync_count else 'clean',
-            message=f'Synced. {len(pending_emails)} pending email(s) awaiting manual generation.',
+            new_emails=0,
+            reviewed_count=reviewed_count,
+            generated_count=generated_count,
+            status=status,
+            message='No pending emails.' if sync_count == 0 else f'Synced {sync_count}. Reviewed: {reviewed_count}. No reviewed emails awaiting generation.',
         )
 
     # Step 3: Send generated drafts (if auto_send is ON)
@@ -152,7 +169,7 @@ async def poll_emails(db: DB):
         # Get emails that now have drafts with approved_at (auto-generated drafts are auto-approved)
         auto_approved_result = await db.execute(
             select(Draft).where(
-                Draft.email_id.in_([e.id for e in pending_emails]),
+                Draft.email_id.in_([e.id for e in reviewed_emails]),
                 Draft.approved_at.isnot(None),
                 Draft.sent_at.is_(None),
             )
@@ -164,10 +181,11 @@ async def poll_emails(db: DB):
             await db.commit()
 
     return PollResponse(
-        new_emails=len(pending_emails),
-        processed_count=generated_count + sent_count,
+        new_emails=0,
+        analyzed_count=analyzed_count,
+        generated_count=generated_count + sent_count,
         status='completed',
-        message=f'Synced: {sync_count}, Generated: {generated_count}, Sent: {sent_count}',
+        message=f'Synced: {sync_count}, Analyzed: {analyzed_count}, Generated: {generated_count}, Sent: {sent_count}',
     )
 
 
@@ -186,6 +204,101 @@ async def _get_thread_history(db: DB, email: Email) -> list:
         .order_by(Email.received_at.asc())
     )
     return result.scalars().all()
+
+
+async def _auto_analyze_emails(db: DB) -> tuple[int, list[str]]:
+    """Auto-analyze pending emails (extract intent + products, set to reviewed). Returns (count, errors)."""
+    analyzed = 0
+    errors = []
+
+    # Get emails in 'pending' status (just synced, waiting for analysis)
+    pending_result = await db.execute(
+        select(Email).where(Email.status == 'pending').order_by(Email.received_at.asc())
+    )
+    pending_emails = pending_result.scalars().all()
+
+    if not pending_emails:
+        return 0, []
+
+    for email in pending_emails:
+        email_id = email.id
+        email_subject = email.subject or ''
+        email_body = email.body_text or ''
+
+        try:
+            # Step 1: Extract intent (uses cached version if available)
+            import json
+            intent_result = await db.execute(
+                select(AuditLog).where(
+                    AuditLog.email_id == email_id,
+                    AuditLog.action == 'intent_extracted',
+                ).order_by(AuditLog.created_at.desc()).limit(1)
+            )
+            intent_entry = intent_result.scalar_one_or_none()
+
+            if not intent_entry or not intent_entry.detail:
+                # Extract via Claude Haiku
+                import anthropic
+                from app.core.config import settings
+
+                client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+                prompt = (
+                    "Extract what the customer is asking for in 3–5 bullet points.\n"
+                    "Focus on: product type, capacity/size, material, quantity, special requirements.\n"
+                    "Return ONLY bullet points, one per line, starting with '- '.\n"
+                    "Be specific and concise. No explanation. No intro line.\n\n"
+                    f"Subject: {email.subject or ''}\n\n{email.body_text or ''}"
+                )
+                response = await client.messages.create(
+                    model='claude-haiku-4-5-20251001',
+                    max_tokens=200,
+                    messages=[{'role': 'user', 'content': prompt}],
+                )
+                text = response.content[0].text.strip()
+                bullets = [l[2:].strip() for l in text.splitlines() if l.strip().startswith('- ')]
+
+                # Cache the result
+                db.add(AuditLog(
+                    id=str(uuid.uuid4()),
+                    email_id=email_id,
+                    action='intent_extracted',
+                    detail=json.dumps(bullets),
+                    created_at=datetime.now(timezone.utc),
+                ))
+
+            # Step 2: Detect products via embedding search
+            from app.services.embedding_service import search_products
+            query = f"{email_subject} {email_body}".strip()
+            products = await search_products(query, db, top_k=12)
+
+            # Save product matches
+            for p in products:
+                existing = await db.execute(
+                    select(ProductMatch).where(
+                        ProductMatch.email_id == email_id,
+                        ProductMatch.sku == p['sku'],
+                    )
+                )
+                if not existing.scalar_one_or_none():
+                    db.add(ProductMatch(
+                        id=str(uuid.uuid4()),
+                        email_id=email_id,
+                        sku=p['sku'],
+                        title=p['title'],
+                        score=None,
+                    ))
+
+            # Step 3: Set status to reviewed
+            email.status = 'reviewed'
+            analyzed += 1
+            logger.info(f'Auto-analyzed email {email_id}: {email_subject}')
+
+        except Exception as e:
+            error_msg = str(e)
+            errors.append(f'Email {email_id}: {error_msg}')
+            logger.error(f'Failed to auto-analyze email {email_id}: {error_msg}')
+
+    return analyzed, errors
 
 
 async def _generate_drafts(db: DB, pending_emails: list) -> tuple[int, list[str]]:
@@ -237,8 +350,10 @@ async def _generate_drafts(db: DB, pending_emails: list) -> tuple[int, list[str]
                 existing_draft.body = draft_body
                 existing_draft.edited_body = None
                 existing_draft.confidence_score = confidence_score
-                existing_draft.approved_at = None
-                existing_draft.approved_by = None
+                # If draft was created by old code (no approved_by), mark as auto-approved
+                if not existing_draft.approved_by and not existing_draft.approved_at:
+                    existing_draft.approved_by = 'auto'
+                    existing_draft.approved_at = datetime.now(timezone.utc)
             else:
                 existing_draft = Draft(
                     id=str(uuid.uuid4()),
@@ -260,6 +375,9 @@ async def _generate_drafts(db: DB, pending_emails: list) -> tuple[int, list[str]
                     title=p['title'],
                     score=None,
                 ))
+
+            # Update email status to draft_ready (auto-approved draft)
+            email.status = 'draft_ready'
 
             generated += 1
             logger.info(f'Auto-generated draft for email {email_id}: {email_subject}')

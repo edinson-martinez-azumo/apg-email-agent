@@ -31,7 +31,7 @@ export function CustomerIntent({ emailId, confidenceScore }: Props) {
       <div className="px-4 py-2.5 bg-muted/50 border-b border-border flex items-center gap-2">
         <div className="h-2 w-2 rounded-full bg-amber-400" />
         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-          Customer Request
+          Customer Intent
         </p>
         {confidenceScore != null && (
           <span className="ml-auto">
