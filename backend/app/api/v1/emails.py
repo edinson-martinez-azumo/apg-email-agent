@@ -150,12 +150,16 @@ async def generate_draft_for_email(email_id: str, db: DB):
     )
     all_matches = all_matches_result.scalars().all()
     manual_skus = {m.sku for m in all_matches if m.score is None and m.status == 'confirmed'}
+    rejected_skus = {m.sku for m in all_matches if m.status == 'rejected'}
 
     query = f"{email.subject or ''} {email.body_text or ''}".strip()
     try:
         products = await search_products(query, db, top_k=12)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f'search_products error: {type(e).__name__}: {e}')
+
+    # Remove rejected products — user explicitly excluded them
+    products = [p for p in products if p['sku'] not in rejected_skus]
 
     # Mark manually added products so they bypass _has_confirmed_specs filtering
     found_skus = {p['sku'] for p in products}
