@@ -1,3 +1,4 @@
+import re
 import uuid
 import datetime
 import json
@@ -143,70 +144,54 @@ async def generate_draft_for_email(email_id: str, db: DB):
 
     thread = await _get_thread(email, db)
 
-    # Check for existing confirmed products
-    existing_validation = await db.execute(
-        select(ProductMatch).where(
-            ProductMatch.email_id == email_id,
-            ProductMatch.status == 'confirmed',
-        )
+    # Read all product matches — manual (score=None, status='confirmed') and AI-suggested
+    all_matches_result = await db.execute(
+        select(ProductMatch).where(ProductMatch.email_id == email_id)
     )
-    confirmed_matches = existing_validation.scalars().all()
+    all_matches = all_matches_result.scalars().all()
+    manual_skus = {m.sku for m in all_matches if m.score is None and m.status == 'confirmed'}
 
-    if confirmed_matches:
-        # Use only confirmed products — resolve product details for ALL confirmed SKUs
-        # so that user-added products not in the embedding top-12 are still included.
-        query = f"{email.subject or ''} {email.body_text or ''}".strip()
-        all_products = await search_products(query, db, top_k=12)
-        confirmed_skus = {m.sku for m in confirmed_matches}
+    query = f"{email.subject or ''} {email.body_text or ''}".strip()
+    try:
+        products = await search_products(query, db, top_k=12)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f'search_products error: {type(e).__name__}: {e}')
 
-        # Start with embedding results that are confirmed
-        products = [p for p in all_products if p['sku'] in confirmed_skus]
+    # Mark manually added products so they bypass _has_confirmed_specs filtering
+    found_skus = {p['sku'] for p in products}
+    for p in products:
+        if p['sku'] in manual_skus:
+            p['_manual'] = True
 
-        # Fill in any confirmed SKUs that were not in the embedding search results
-        all_products_skus = {p['sku'] for p in all_products}
-        missing_skus = confirmed_skus - all_products_skus
-        if missing_skus:
-            placeholders = ', '.join(f"'{s}'" for s in missing_skus)
-            result = await db.execute(text(f"""
-                SELECT sku, title, type, materials, moq, capacities,
-                       price_base, price_10k, price_25k, price_50k, price_100k,
-                       in_stock, image_url, search_text
-                FROM product_embeddings_v2
-                WHERE sku IN ({placeholders})
-            """))
-            for row in result.mappings():
-                products.append({
-                    'sku': row['sku'],
-                    'title': row['title'] or '',
-                    'type': row['type'] or '',
-                    'materials': row['materials'] or '',
-                    'moq': row['moq'] or '',
-                    'capacities': row['capacities'] or '',
-                    'in_stock': bool(row['in_stock']),
-                    'price_base': row['price_base'] or '',
-                    'price_10k': row['price_10k'] or '',
-                    'price_25k': row['price_25k'] or '',
-                    'price_50k': row['price_50k'] or '',
-                    'price_100k': row['price_100k'] or '',
-                    'image_url': row['image_url'] or '',
-                    'search_text': row.get('search_text') or '',
-                })
-
-        if not products:
-            # Fallback: if somehow all products were filtered out, use full search
-            try:
-                products = await search_products(query, db, top_k=12)
-            except Exception as e:
-                raise HTTPException(status_code=500, detail=f'search_products error: {type(e).__name__}: {e}')
-    else:
-        products = []
-
-    if not products:
-        try:
-            query = f"{email.subject or ''} {email.body_text or ''}".strip()
-            products = await search_products(query, db, top_k=12)
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f'search_products error: {type(e).__name__}: {e}')
+    # Fetch manual SKUs not returned by embedding search
+    missing_manual = manual_skus - found_skus
+    if missing_manual:
+        placeholders = ', '.join(f"'{s}'" for s in missing_manual)
+        rows = await db.execute(text(f"""
+            SELECT sku, title, type, materials, moq, capacities,
+                   price_base, price_10k, price_25k, price_50k, price_100k,
+                   in_stock, image_url, search_text
+            FROM product_embeddings_v2
+            WHERE sku IN ({placeholders})
+        """))
+        for row in rows.mappings():
+            products.append({
+                'sku': row['sku'],
+                'title': row['title'] or '',
+                'type': row['type'] or '',
+                'materials': row['materials'] or '',
+                'moq': row['moq'] or '',
+                'capacities': row['capacities'] or '',
+                'in_stock': bool(row['in_stock']),
+                'price_base': row['price_base'] or '',
+                'price_10k': row['price_10k'] or '',
+                'price_25k': row['price_25k'] or '',
+                'price_50k': row['price_50k'] or '',
+                'price_100k': row['price_100k'] or '',
+                'image_url': row['image_url'] or '',
+                'search_text': row.get('search_text') or '',
+                '_manual': True,
+            })
 
     try:
         draft_body, confidence_score = ai_generate(
@@ -217,6 +202,40 @@ async def generate_draft_for_email(email_id: str, db: DB):
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f'generate_draft error: {type(e).__name__}: {e}')
+
+    # Guarantee manually added products appear — insert any that Claude omitted
+    if manual_skus:
+        missing_in_draft = [
+            p for p in products
+            if p.get('_manual') and p['sku'] not in draft_body
+        ]
+        if missing_in_draft:
+            # Strip sign-off
+            sign_off_pattern = re.compile(r'\nAPG Sales Team\s*\|.*$', re.IGNORECASE | re.DOTALL)
+            sign_off_match = sign_off_pattern.search(draft_body)
+            sign_off = sign_off_match.group() if sign_off_match else ''
+            body_no_signoff = draft_body[:sign_off_match.start()] if sign_off_match else draft_body
+
+            # Find closing question — last paragraph ending with '?'
+            # Insert manual products before it so they stay in the product section
+            closing_pattern = re.compile(r'\n\n([^\n]+\?)\s*$', re.DOTALL)
+            closing_match = closing_pattern.search(body_no_signoff)
+            if closing_match:
+                insert_at = closing_match.start()
+                closing = body_no_signoff[insert_at:]
+                body_no_signoff = body_no_signoff[:insert_at]
+            else:
+                closing = ''
+
+            extra_lines = ['\n\nAlso wanted to make sure you see:']
+            for p in missing_in_draft:
+                specs = ', '.join(filter(None, [p.get('materials'), p.get('capacities')]))
+                label = f"**{p['sku']}** — {p['title']}" + (f' ({specs})' if specs else '')
+                extra_lines.append(f'- {label}')
+                if p.get('image_url'):
+                    extra_lines.append(f"![{p['sku']}]({p['image_url']})")
+
+            draft_body = body_no_signoff + '\n'.join(extra_lines) + closing + sign_off
 
     result = await db.execute(select(Draft).where(Draft.email_id == email_id))
     existing = result.scalar_one_or_none()
@@ -580,6 +599,9 @@ async def generate_with_products(email_id: str, body: GenerateWithProductsReques
 
     # Filter to only confirmed/user-added SKUs
     confirmed_products = [p for p in all_products if p['sku'] in extra_skus]
+    # Mark auto-detected products (not manually added)
+    for p in confirmed_products:
+        p['_manual'] = False
 
     if not confirmed_products:
         raise HTTPException(status_code=400, detail='No confirmed products selected')
@@ -734,6 +756,7 @@ async def analyze_email(email_id: str, db: DB):
         if match:
             match.score = p['score']
             match.title = p['title']
+            match.status = 'confirmed'  # analyze products start as confirmed
         else:
             db.add(ProductMatch(
                 id=str(uuid.uuid4()),
@@ -741,6 +764,7 @@ async def analyze_email(email_id: str, db: DB):
                 sku=p['sku'],
                 title=p['title'],
                 score=p['score'],
+                status='confirmed',
             ))
 
     # Step 3: Set status to reviewed

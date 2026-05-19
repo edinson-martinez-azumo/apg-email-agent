@@ -81,7 +81,10 @@ _NECK_RE = re.compile(r'\b\d{2}/\d{3}\b')
 
 def _has_confirmed_specs(p: dict) -> bool:
     """Skip products whose key specs (capacity) cannot be confirmed from the data.
-    Accepts if capacities field is populated OR capacity is readable from the title."""
+    Accepts if capacities field is populated OR capacity is readable from the title.
+    Manually-added products (flagged with _manual) are always included regardless of specs."""
+    if p.get('_manual'):
+        return True
     cap = str(p.get('capacities') or '').strip()
     if cap and cap not in ('nan', 'None', '-'):
         return True
@@ -249,7 +252,10 @@ def generate_draft(
     Generate a reply draft given pre-fetched products and optional thread history.
     Returns (draft_body, confidence_score 1-5).
     """
+    # Filter out products without confirmed specs, but keep manually-added ones
     confirmed = [p for p in products if _has_confirmed_specs(p)]
+    # Strip internal _manual flag before building context
+    confirmed = [{k: v for k, v in p.items() if k != '_manual'} for p in confirmed]
     product_context = _build_product_context(confirmed)
     thread_context = _build_thread_context(thread_history or [])
     suggested_skus = _extract_suggested_skus(thread_history or [])
