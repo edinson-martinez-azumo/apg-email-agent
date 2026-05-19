@@ -22,6 +22,7 @@ class SettingsResponse(BaseModel):
     auto_generate: bool
     auto_send: bool
     polling_interval_seconds: int
+    draft_count: int
 
     model_config = {'from_attributes': True}
 
@@ -56,11 +57,20 @@ async def get_settings(db: DB):
     else:
         poll_interval = min(VALID_POLL_INTERVALS)
 
+    # Count pending drafts (no approved_by, no approved_at)
+    from app.db.models.draft import Draft
+    draft_result = await db.execute(
+        select(func.count()).select_from(Draft)
+        .where((Draft.approved_by.is_(None)) & (Draft.approved_at.is_(None)))
+    )
+    draft_count = draft_result.scalar() or 0
+
     return SettingsResponse(
         auto_sync=auto_sync,
         auto_generate=auto_generate,
         auto_send=auto_send,
         polling_interval_seconds=poll_interval,
+        draft_count=draft_count,
     )
 
 
@@ -96,9 +106,18 @@ async def update_settings(payload: SettingsUpdate, db: DB):
 
     await db.commit()
 
+    # Count pending drafts
+    from app.db.models.draft import Draft
+    draft_result = await db.execute(
+        select(func.count()).select_from(Draft)
+        .where((Draft.approved_by.is_(None)) & (Draft.approved_at.is_(None)))
+    )
+    draft_count = draft_result.scalar() or 0
+
     return SettingsResponse(
         auto_sync=payload.auto_sync,
         auto_generate=payload.auto_generate,
         auto_send=payload.auto_send,
         polling_interval_seconds=payload.polling_interval_seconds,
+        draft_count=draft_count,
     )

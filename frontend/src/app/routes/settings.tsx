@@ -12,7 +12,7 @@ const INTERVAL_OPTIONS = [
 
 const TOGGLE_OPTIONS = [
   { key: 'auto_sync' as const, label: 'Auto-sync', description: 'Automatically pull new emails from Gmail' },
-  { key: 'auto_generate' as const, label: 'Auto-generate', description: 'Automatically generate AI drafts for new emails' },
+  { key: 'auto_generate' as const, label: 'Auto-draft', description: 'Automatically generate AI drafts for new emails' },
   { key: 'auto_send' as const, label: 'Auto-send', description: 'Automatically send generated drafts without manual review' },
 ] as const
 
@@ -23,7 +23,8 @@ export function SettingsPage() {
   const handleToggle = async (key: keyof Settings, checked: boolean) => {
     if (!settings) return
     try {
-      await updateSettings({ ...settings, [key]: checked })
+      const { draft_count: _, ...updateData } = settings
+      await updateSettings({ ...updateData, [key]: checked })
       toast.success(`${TOGGLE_OPTIONS.find(o => o.key === key)?.label} ${checked ? 'enabled' : 'disabled'}`)
     } catch {
       toast.error('Failed to update settings')
@@ -33,7 +34,8 @@ export function SettingsPage() {
   const handleIntervalChange = async (value: number) => {
     if (!settings) return
     try {
-      await updateSettings({ ...settings, polling_interval_seconds: value })
+      const { draft_count: _, ...updateData } = settings
+      await updateSettings({ ...updateData, polling_interval_seconds: value })
       toast.success('Polling interval updated')
     } catch {
       toast.error('Failed to update interval')
@@ -43,19 +45,15 @@ export function SettingsPage() {
   const handleResetAll = async () => {
     if (!settings) return
     try {
-      await updateSettings({
-        auto_sync: true,
-        auto_generate: false,
-        auto_send: false,
-        polling_interval_seconds: settings.polling_interval_seconds,
-      })
+      const { draft_count: _, ...updateData } = settings
+      await updateSettings({ ...updateData, auto_sync: true, auto_generate: false, auto_send: false })
       toast.success('Settings reset to defaults')
     } catch {
       toast.error('Failed to reset settings')
     }
   }
 
-  if (isLoading) {
+  if (isLoading || !settings) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-8">
         <div className="animate-pulse space-y-6">
@@ -90,10 +88,16 @@ export function SettingsPage() {
         <div className="space-y-3">
           {TOGGLE_OPTIONS.map((option) => {
             const checked = settings?.[option.key] ?? false
+            const hasCounter = settings && option.key === 'auto_generate' && settings.draft_count > 0
             return (
               <div key={option.key} className="flex items-center justify-between rounded-lg border border-border p-3">
                 <div>
-                  <p className="text-sm font-medium">{option.label}</p>
+                  <p className="text-sm font-medium">
+                    {option.label}
+                    {hasCounter && (
+                      <span className="ml-2 text-xs font-normal text-primary">({settings.draft_count} pending)</span>
+                    )}
+                  </p>
                   <p className="text-xs text-muted-foreground mt-0.5">{option.description}</p>
                 </div>
                 <button

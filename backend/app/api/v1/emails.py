@@ -1,5 +1,6 @@
 import uuid
 import datetime
+import json
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select, func
@@ -210,6 +211,26 @@ async def get_email_intent(email_id: str, db: DB):
     if not email:
         raise HTTPException(status_code=404, detail='Email not found')
 
+    # Check if we already extracted intent for this email
+    existing = await db.execute(
+        select(AuditLog).where(
+            AuditLog.email_id == email_id,
+            AuditLog.action == 'intent_extracted',
+        ).order_by(AuditLog.created_at.desc()).limit(1)
+    )
+    cached = existing.scalar_one_or_none()
+    if cached and cached.detail:
+        detail_data = cached.detail
+        if isinstance(detail_data, list):
+            return {'bullets': detail_data}
+        elif isinstance(detail_data, str):
+            try:
+                parsed = json.loads(detail_data)
+                return {'bullets': parsed if isinstance(parsed, list) else parsed.get('bullets', [])}
+            except (json.JSONDecodeError, TypeError):
+                return {'bullets': []}
+        return {'bullets': []}
+
     client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
     prompt = (
         "Extract what the customer is asking for in 3–5 bullet points.\n"
@@ -225,6 +246,17 @@ async def get_email_intent(email_id: str, db: DB):
     )
     text = response.content[0].text.strip()
     bullets = [l[2:].strip() for l in text.splitlines() if l.strip().startswith('- ')]
+
+    # Cache the result
+    db.add(AuditLog(
+        id=str(uuid.uuid4()),
+        email_id=email_id,
+        action='intent_extracted',
+        detail=json.dumps(bullets),
+        created_at=datetime.datetime.now(datetime.timezone.utc),
+    ))
+    await db.commit()
+
     return {'bullets': bullets}
 
 
@@ -244,17 +276,88 @@ async def discard_email(email_id: str, db: DB):
     return {'status': 'discarded'}
 
 
-# ─── Product validation endpoints ─────────────────────────────────────────────
+# ─── Detected products (shown in draft editor) ─────────────────────────────────
 
 
-def _serialize_product_match(pm: ProductMatch) -> dict:
+class DetectedProductItem(BaseModel):
+    sku: str
+    title: str | None
+    score: float | None
+    status: str | None
+
+
+class CustomerIntentItem(BaseModel):
+    text: str
+
+
+class DetectedProductsResponse(BaseModel):
+    intent: list[CustomerIntentItem]
+    products: list[DetectedProductItem]
+    model_config = {'from_attributes': True}
+
+
+@router.get('/{email_id}/detected-products', response_model=DetectedProductsResponse)
+async def get_detected_products(email_id: str, db: DB):
+    """Get AI-detected products and customer intent bullets for the draft editor."""
+    email = await db.get(Email, email_id)
+    if not email:
+        raise HTTPException(status_code=404, detail='Email not found')
+
+    # Get detected products (suggested = None status)
+    result = await db.execute(
+        select(ProductMatch).where(ProductMatch.email_id == email_id)
+    )
+    all_matches = result.scalars().all()
+
+    products = []
+    for match in all_matches:
+        products.append(DetectedProductItem(
+            sku=match.sku,
+            title=match.title,
+            score=match.score,
+            status=match.status,
+        ))
+
+    # Get customer intent bullets (cached if available)
+    intent_result = await db.execute(
+        select(AuditLog).where(
+            AuditLog.email_id == email_id,
+            AuditLog.action == 'intent_extracted',
+        ).order_by(AuditLog.created_at.desc()).limit(1)
+    )
+    intent_entry = intent_result.scalar_one_or_none()
+
+    intent = []
+    if intent_entry and intent_entry.detail:
+        intent_data = intent_entry.detail
+        if isinstance(intent_data, str):
+            try:
+                import json
+                parsed = json.loads(intent_data)
+                if isinstance(parsed, list):
+                    intent = [CustomerIntentItem(text=str(b)) for b in parsed]
+                elif isinstance(parsed, dict) and 'bullets' in parsed:
+                    intent = [CustomerIntentItem(text=str(b)) for b in parsed['bullets']]
+            except (json.JSONDecodeError, TypeError):
+                pass
+        elif isinstance(intent_data, list):
+            intent = [CustomerIntentItem(text=str(b)) for b in intent_data]
+
+    return DetectedProductsResponse(intent=intent, products=products)
+
+
+def _serialize_product_match(match: ProductMatch) -> dict:
+    """Convert a ProductMatch ORM object to a plain dict for API responses."""
     return {
-        'id': pm.id,
-        'sku': pm.sku,
-        'title': pm.title,
-        'score': pm.score,
-        'status': pm.status,
+        'id': match.id,
+        'sku': match.sku,
+        'title': match.title,
+        'score': match.score,
+        'status': match.status,
     }
+
+
+# ─── Product validation endpoints ─────────────────────────────────────────────
 
 
 @router.get('/{email_id}/products/validation', response_model=ProductValidationResponse)

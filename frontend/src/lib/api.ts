@@ -61,9 +61,9 @@ export const demoApi = {
 
 export const settingsApi = {
   get: () =>
-    http.get<{ auto_sync: boolean; auto_generate: boolean; auto_send: boolean; polling_interval_seconds: number }>('/api/v1/settings').then(r => r.data),
+    http.get<{ auto_sync: boolean; auto_generate: boolean; auto_send: boolean; polling_interval_seconds: number; draft_count: number }>('/api/v1/settings').then(r => r.data),
   update: (payload: { auto_sync: boolean; auto_generate: boolean; auto_send: boolean; polling_interval_seconds: number }) =>
-    http.put<{ auto_sync: boolean; auto_generate: boolean; auto_send: boolean; polling_interval_seconds: number }>('/api/v1/settings', payload).then(r => r.data),
+    http.put<{ auto_sync: boolean; auto_generate: boolean; auto_send: boolean; polling_interval_seconds: number; draft_count: number }>('/api/v1/settings', payload).then(r => r.data),
 }
 
 export const pollApi = {

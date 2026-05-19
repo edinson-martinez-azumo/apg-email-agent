@@ -6,6 +6,14 @@ export interface Settings {
   auto_generate: boolean
   auto_send: boolean
   polling_interval_seconds: number
+  draft_count: number
+}
+
+export interface SettingsUpdatePayload {
+  auto_sync: boolean
+  auto_generate: boolean
+  auto_send: boolean
+  polling_interval_seconds: number
 }
 
 export function useSettings() {
@@ -18,10 +26,10 @@ export function useSettings() {
 export function useUpdateSettings() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (payload: Settings) =>
+    mutationFn: (payload: SettingsUpdatePayload) =>
       settingsApi.update(payload),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['settings'] })
+    onSuccess: (data) => {
+      qc.setQueryData(['settings'], data)
     },
   })
 }

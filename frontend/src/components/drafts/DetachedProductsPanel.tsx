@@ -260,7 +260,7 @@ export function DetachedProductsPanel({ emailId }: Props) {
       }
 
       if (matchingProducts.length > 0) {
-        groups.push({ intent: bullet, products: matchingProducts })
+        groups.push({ intent: bulletText, products: matchingProducts })
       }
     }
 
