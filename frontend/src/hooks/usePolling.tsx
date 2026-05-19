@@ -1,10 +1,11 @@
 import { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react'
 import { pollApi } from '@/lib/api'
+import { useSettings } from './useSettings'
 import { useEmails } from './useEmails'
 import type { PollStatus } from '@/types/api'
 
 interface PollingContextValue {
-  lastResult: PollStatus & { new_emails: number; processed_count: number } | null
+  lastResult: PollStatus | null
   lastPollAt: Date | null
   error: Error | null
   isPolling: boolean
@@ -24,21 +25,20 @@ export function usePollingContext() {
 /**
  * usePolling - Background polling hook for automated email processing.
  *
- * When automatedMode is true, polls the backend every intervalMs milliseconds.
+ * When any auto_* setting is enabled, polls the backend every intervalMs milliseconds.
  * Automatically refreshes the email list after each poll.
  *
- * @param automatedMode - Whether automated mode is enabled
  * @param intervalMs - Polling interval in milliseconds
  */
-export function usePolling(
-  automatedMode: boolean,
-  intervalMs: number,
-) {
+export function usePolling(intervalMs: number) {
+  const { data: settings } = useSettings()
   const { refetch: refetchEmails } = useEmails()
-  const lastResultRef = useRef<PollStatus & { new_emails: number; processed_count: number } | null>(null)
+  const lastResultRef = useRef<PollStatus | null>(null)
   const lastPollAtRef = useRef<Date | null>(null)
   const errorRef = useRef<Error | null>(null)
   const isFetchingRef = useRef(false)
+
+  const isAutomationActive = settings && (settings.auto_sync || settings.auto_generate || settings.auto_send)
 
   const poll = useCallback(async () => {
     if (isFetchingRef.current) return
@@ -61,19 +61,19 @@ export function usePolling(
     }
   }, [refetchEmails])
 
-  // Poll once on mount if automated mode is on
+  // Poll once on mount if automation is active
   useEffect(() => {
-    if (!automatedMode) return
+    if (!isAutomationActive) return
     poll()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Set up interval - recreated when automatedMode or intervalMs changes
+  // Set up interval - recreated when isAutomationActive or intervalMs changes
   useEffect(() => {
-    if (!automatedMode) return
+    if (!isAutomationActive) return
 
     const intervalId = setInterval(poll, intervalMs)
     return () => clearInterval(intervalId)
-  }, [automatedMode, intervalMs, poll])
+  }, [isAutomationActive, intervalMs, poll])
 
   return {
     lastPollAt: lastPollAtRef.current,
@@ -83,7 +83,7 @@ export function usePolling(
 }
 
 export function PollingProvider({ children }: { children: React.ReactNode }) {
-  const [lastResult, setLastResult] = useState<PollStatus & { new_emails: number; processed_count: number } | null>(null)
+  const [lastResult, setLastResult] = useState<PollStatus | null>(null)
   const [lastPollAt, setLastPollAt] = useState<Date | null>(null)
   const [error, setError] = useState<Error | null>(null)
   const [isPolling, setIsPolling] = useState(false)

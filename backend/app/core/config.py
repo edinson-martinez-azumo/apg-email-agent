@@ -12,7 +12,7 @@ class Settings(BaseSettings):
 
     database_url: str
     environment: str = 'development'
-    frontend_url: str = 'http://localhost:5173'
+    frontend_url: str = 'http://localhost:5174'
 
     anthropic_api_key: str
     cohere_api_key: str = ''

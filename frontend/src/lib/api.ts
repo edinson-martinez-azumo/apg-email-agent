@@ -17,14 +17,12 @@ export const emailsApi = {
     http.post('/api/v1/emails/sync').then(r => r.data),
   intent: (id: string) =>
     http.get<{ bullets: string[] }>(`/api/v1/emails/${id}/intent`).then(r => r.data),
-  getValidation: (id: string) =>
-    http.get<ProductValidation>(`/api/v1/emails/${id}/products/validation`).then(r => r.data),
+  getDetectedProducts: (id: string) =>
+    http.get<{ intent: string[]; products: Array<{ sku: string; title: string | null; score: number | null; status: string | null }> }>(`/api/v1/emails/${id}/detected-products`).then(r => r.data),
   validateProducts: (id: string, body: { confirmed: string[]; rejected: string[] }) =>
-    http.post<ProductValidation>(`/api/v1/emails/${id}/products/validate`, body).then(r => r.data),
+    http.post<{ confirmed: string[]; rejected: string[]; suggested: string[] }>(`/api/v1/emails/${id}/products/validate`, body).then(r => r.data),
   addProduct: (id: string, sku: string) =>
     http.post<{ status: string; sku: string }>(`/api/v1/emails/${id}/products/add`, { sku }).then(r => r.data),
-  generateWithProducts: (id: string, body: { products: string[] }) =>
-    http.post<{ status: string; draft_preview: string }>(`/api/v1/emails/${id}/generate-with-products`, body).then(r => r.data),
 }
 
 export const draftsApi = {
@@ -63,9 +61,9 @@ export const demoApi = {
 
 export const settingsApi = {
   get: () =>
-    http.get<{ automated_mode: boolean; polling_interval_seconds: number }>('/api/v1/settings').then(r => r.data),
-  update: (payload: { automated_mode: boolean; polling_interval_seconds: number }) =>
-    http.put<{ automated_mode: boolean; polling_interval_seconds: number }>('/api/v1/settings', payload).then(r => r.data),
+    http.get<{ auto_sync: boolean; auto_generate: boolean; auto_send: boolean; polling_interval_seconds: number }>('/api/v1/settings').then(r => r.data),
+  update: (payload: { auto_sync: boolean; auto_generate: boolean; auto_send: boolean; polling_interval_seconds: number }) =>
+    http.put<{ auto_sync: boolean; auto_generate: boolean; auto_send: boolean; polling_interval_seconds: number }>('/api/v1/settings', payload).then(r => r.data),
 }
 
 export const pollApi = {

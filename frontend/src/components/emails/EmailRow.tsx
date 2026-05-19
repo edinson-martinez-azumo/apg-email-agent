@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import ReactMarkdown from 'react-markdown'
 import { StatusBadge } from './StatusBadge'
@@ -10,6 +10,7 @@ import { useGenerateDraft, useDiscardEmail } from '@/hooks/useEmails'
 import { draftsApi } from '@/lib/api'
 import { PreviewModal } from '@/components/drafts/PreviewModal'
 import { CustomerIntent } from '@/components/drafts/CustomerIntent'
+import { DetachedProductsPanel } from '@/components/drafts/DetachedProductsPanel'
 
 // ─── Main row ─────────────────────────────────────────────────────────────────
 
@@ -84,14 +85,9 @@ export function EmailRow({ email, isExpanded, onToggle, hideHeader = false, read
 // ─── Pending ──────────────────────────────────────────────────────────────────
 
 function PendingContent({ email }: { email: Email }) {
-  const navigate = useNavigate()
   const generate = useGenerateDraft()
   const discard = useDiscardEmail()
   const [discardConfirm, setDiscardConfirm] = useState(false)
-
-  const handleValidate = () => {
-    navigate(`/inbox/${email.id}/validate-products`)
-  }
 
   const handleGenerate = () => {
     const t = toast.loading('Generating AI draft…')
@@ -146,11 +142,11 @@ function PendingContent({ email }: { email: Email }) {
           <button
             onClick={handleGenerate}
             disabled={generate.isPending}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-150 cursor-pointer"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 min-h-[40px] text-sm font-medium text-primary-foreground hover:opacity-90 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity duration-150 cursor-pointer"
           >
             {generate.isPending ? (
               <>
-                <span className="h-3 w-3 rounded-full border-2 border-foreground/30 border-t-foreground animate-spin" />
+                <span className="h-3 w-3 rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground animate-spin" />
                 Generating…
               </>
             ) : (
@@ -161,15 +157,6 @@ function PendingContent({ email }: { email: Email }) {
                 Generate Draft
               </>
             )}
-          </button>
-          <button
-            onClick={handleValidate}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 min-h-[40px] text-sm font-medium text-primary-foreground hover:opacity-90 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity duration-150 cursor-pointer"
-          >
-            <svg aria-hidden="true" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            Validate Products
           </button>
         </div>
       </div>
@@ -261,6 +248,13 @@ function DraftContent({ email, readOnly = false }: { email: Email; readOnly?: bo
       <div className="px-5 pt-4 pb-3 border-b border-border">
         <CustomerIntent emailId={email.id} confidenceScore={draft?.confidence_score} />
       </div>
+
+      {draft && (
+        <div className="px-5 py-3">
+          <DetachedProductsPanel emailId={email.id} />
+        </div>
+      )}
+
       <div className="grid lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-border">
         <div className="px-5 pt-4 pb-5">
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">

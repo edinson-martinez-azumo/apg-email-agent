@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { toast } from 'sonner'
 import { pollApi } from '@/lib/api'
 import { useEmails } from '@/hooks/useEmails'
 import { useSettings } from '@/hooks/useSettings'
@@ -12,13 +11,13 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const { refetch: refetchEmails } = useEmails()
   const [lastPollAt, setLastPollAt] = useState<Date | null>(null)
 
-  const automatedMode = settings?.automated_mode ?? false
+  const isAutomationActive = settings && (settings.auto_sync || settings.auto_generate || settings.auto_send)
   const intervalMs = (settings?.polling_interval_seconds ?? 60) * 1000
   const intervalRef = useRef<number | null>(null)
   const isFetchingRef = useRef(false)
 
   const doPoll = useCallback(async () => {
-    if (isFetchingRef.current || !automatedMode) return
+    if (isFetchingRef.current || !isAutomationActive) return
     isFetchingRef.current = true
 
     try {
@@ -31,17 +30,17 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     } finally {
       isFetchingRef.current = false
     }
-  }, [automatedMode, refetchEmails])
+  }, [isAutomationActive, refetchEmails])
 
-  // Poll once on mount if automated mode is on
+  // Poll once on mount if automation is active
   useEffect(() => {
-    if (!automatedMode) return
+    if (!isAutomationActive) return
     doPoll()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Set up polling interval
   useEffect(() => {
-    if (!automatedMode) {
+    if (!isAutomationActive) {
       if (intervalRef.current) {
         clearInterval(intervalRef.current)
         intervalRef.current = null
@@ -56,15 +55,11 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         intervalRef.current = null
       }
     }
-  }, [automatedMode, intervalMs, doPoll])
+  }, [isAutomationActive, intervalMs, doPoll])
 
   const handleManualPoll = useCallback(async () => {
-    if (!automatedMode) {
-      toast.error('Enable automated mode first')
-      return
-    }
     await doPoll()
-  }, [automatedMode, doPoll])
+  }, [doPoll])
 
   const secondsSinceLastPoll = lastPollAt
     ? Math.floor((Date.now() - lastPollAt.getTime()) / 1000)
@@ -98,13 +93,20 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           </div>
 
           {/* Polling status indicator */}
-          {automatedMode && !settingsLoading && settings && (
+          {isAutomationActive && !settingsLoading && settings && (
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-2">
-                <div className="h-2.5 w-2.5 rounded-full bg-green-500" />
+                <div className="h-2.5 w-2.5 rounded-full bg-green-500 animate-pulse" />
                 <span className="text-xs text-white/80">
-                  Auto-polling every {settings.polling_interval_seconds}s
-                  {secondsSinceLastPoll !== null && ` (${secondsSinceLastPoll}s ago)`}
+                  {settings.auto_sync && settings.auto_generate && settings.auto_send
+                    ? 'Auto'
+                    : [
+                        settings.auto_sync && 'sync',
+                        settings.auto_generate && 'generate',
+                        settings.auto_send && 'send',
+                      ].filter(Boolean).join(' + ')}
+                  {' '}polling{' '}
+                  {secondsSinceLastPoll !== null && `(${secondsSinceLastPoll}s ago)`}
                 </span>
               </div>
               <button

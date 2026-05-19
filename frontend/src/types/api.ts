@@ -91,7 +91,9 @@ export interface DashboardResponse {
 }
 
 export interface PollStatus {
-  automated_mode: boolean
+  auto_sync: boolean
+  auto_generate: boolean
+  auto_send: boolean
   polling_interval_seconds: number
   last_poll_at: string | null
   pending_count: number

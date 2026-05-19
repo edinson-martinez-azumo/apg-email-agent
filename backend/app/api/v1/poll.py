@@ -28,7 +28,9 @@ class PollResponse(BaseModel):
 
 
 class PollStatusResponse(BaseModel):
-    automated_mode: bool
+    auto_sync: bool
+    auto_generate: bool
+    auto_send: bool
     polling_interval_seconds: int
     last_poll_at: datetime | None
     pending_count: int
@@ -39,12 +41,14 @@ async def get_poll_status(db: DB):
     """Get current polling status and configuration."""
     # Get settings
     result = await db.execute(
-        select(AppSetting).where(AppSetting.key.in_(['automated_mode', 'polling_interval_seconds']))
+        select(AppSetting).where(AppSetting.key.in_(['auto_sync', 'auto_generate', 'auto_send', 'polling_interval_seconds']))
     )
     rows = result.scalars().all()
     settings_dict = {row.key: row.value for row in rows}
 
-    automated_mode = settings_dict.get('automated_mode', 'false').lower() == 'true'
+    auto_sync = settings_dict.get('auto_sync', 'true').lower() == 'true'
+    auto_generate = settings_dict.get('auto_generate', 'false').lower() == 'true'
+    auto_send = settings_dict.get('auto_send', 'false').lower() == 'true'
     poll_interval = int(settings_dict.get('polling_interval_seconds', '60'))
 
     # Get last poll time (from audit log)
@@ -64,7 +68,9 @@ async def get_poll_status(db: DB):
     pending_count = pending_result.scalar() or 0
 
     return PollStatusResponse(
-        automated_mode=automated_mode,
+        auto_sync=auto_sync,
+        auto_generate=auto_generate,
+        auto_send=auto_send,
         polling_interval_seconds=poll_interval,
         last_poll_at=last_poll_at,
         pending_count=pending_count,
@@ -73,13 +79,17 @@ async def get_poll_status(db: DB):
 
 @router.post('/poll', response_model=PollResponse)
 async def poll_emails(db: DB):
-    """Poll for new emails and process them if automated mode is enabled."""
-    # Check if automated mode is enabled
+    """Poll for new emails and process them based on auto_* settings."""
+    # Check settings
     result = await db.execute(
-        select(AppSetting).where(AppSetting.key == 'automated_mode')
+        select(AppSetting).where(AppSetting.key.in_(['auto_sync', 'auto_generate', 'auto_send']))
     )
-    row = result.scalar_one_or_none()
-    automated_mode = row and row.value.lower() == 'true'
+    rows = result.scalars().all()
+    settings_dict = {row.key: row.value for row in rows}
+
+    auto_sync = settings_dict.get('auto_sync', 'true').lower() == 'true'
+    auto_generate = settings_dict.get('auto_generate', 'false').lower() == 'true'
+    auto_send = settings_dict.get('auto_send', 'false').lower() == 'true'
 
     # Log the poll
     db.add(AuditLog(
@@ -89,30 +99,23 @@ async def poll_emails(db: DB):
         created_at=datetime.now(timezone.utc),
     ))
 
-    if not automated_mode:
-        await db.commit()
-        return PollResponse(
-            new_emails=0,
-            processed_count=0,
-            status='disabled',
-            message='Automated mode is disabled. Only sync performed.',
-        )
-
-    # Sync new emails from Gmail
-    from app.services.gmail_service import sync_emails
-
-    try:
-        await sync_emails(db)
-        await db.commit()
-    except Exception as e:
-        logger.error(f'Sync failed: {e}')
-        await db.rollback()
-        return PollResponse(
-            new_emails=0,
-            processed_count=0,
-            status='error',
-            message=f'Sync failed: {str(e)}',
-        )
+    # Step 1: Always sync (unless disabled)
+    sync_count = 0
+    if auto_sync:
+        from app.services.gmail_service import sync_emails
+        try:
+            await sync_emails(db)
+            await db.commit()
+            sync_count = 1
+        except Exception as e:
+            logger.error(f'Sync failed: {e}')
+            await db.rollback()
+            return PollResponse(
+                new_emails=0,
+                processed_count=0,
+                status='error',
+                message=f'Sync failed: {str(e)}',
+            )
 
     # Get pending emails
     pending_result = await db.execute(
@@ -121,16 +124,73 @@ async def poll_emails(db: DB):
     pending_emails = pending_result.scalars().all()
 
     if not pending_emails:
-        await db.commit()
+        status = 'clean' if sync_count == 0 else 'synced'
         return PollResponse(
-            new_emails=0,
+            new_emails=len(pending_emails),
             processed_count=0,
-            status='clean',
-            message='No pending emails found.',
+            status=status,
+            message='No pending emails found.' if sync_count == 0 else f'Synced {sync_count} batch(es). No pending emails.',
         )
 
-    # Generate and send drafts for pending emails
-    processed_count = 0
+    # Step 2: Generate drafts for pending emails (if auto_generate is ON)
+    generated_count = 0
+    if auto_generate:
+        generated_count, errors = await _generate_drafts(db, pending_emails)
+        await db.commit()
+    else:
+        await db.commit()
+        return PollResponse(
+            new_emails=len(pending_emails),
+            processed_count=0,
+            status='synced' if sync_count else 'clean',
+            message=f'Synced. {len(pending_emails)} pending email(s) awaiting manual generation.',
+        )
+
+    # Step 3: Send generated drafts (if auto_send is ON)
+    sent_count = 0
+    if auto_send:
+        # Get emails that now have drafts with approved_at (auto-generated drafts are auto-approved)
+        auto_approved_result = await db.execute(
+            select(Draft).where(
+                Draft.email_id.in_([e.id for e in pending_emails]),
+                Draft.approved_at.isnot(None),
+                Draft.sent_at.is_(None),
+            )
+        )
+        drafts_to_send = auto_approved_result.scalars().all()
+
+        if drafts_to_send:
+            sent_count, send_errors = await _send_drafts(db, drafts_to_send)
+            await db.commit()
+
+    return PollResponse(
+        new_emails=len(pending_emails),
+        processed_count=generated_count + sent_count,
+        status='completed',
+        message=f'Synced: {sync_count}, Generated: {generated_count}, Sent: {sent_count}',
+    )
+
+
+async def _get_thread_history(db: DB, email: Email) -> list:
+    """Get thread history for a given email."""
+    if not email.thread_id:
+        return []
+
+    result = await db.execute(
+        select(Email)
+        .where(
+            (Email.thread_id == email.thread_id) &
+            (Email.received_at < email.received_at) &
+            (Email.status != 'discarded')
+        )
+        .order_by(Email.received_at.asc())
+    )
+    return result.scalars().all()
+
+
+async def _generate_drafts(db: DB, pending_emails: list) -> tuple[int, list[str]]:
+    """Generate AI drafts for pending emails. Returns (count, errors)."""
+    generated = 0
     errors = []
 
     for email in pending_emails:
@@ -201,18 +261,45 @@ async def poll_emails(db: DB):
                     score=None,
                 ))
 
-            # Send the email
+            generated += 1
+            logger.info(f'Auto-generated draft for email {email_id}: {email_subject}')
+
+        except Exception as e:
+            error_msg = str(e)
+            errors.append(f'Email {email_id}: {error_msg}')
+            logger.error(f'Failed to generate draft for {email_id}: {error_msg}')
+
+    return generated, errors
+
+
+async def _send_drafts(db: DB, drafts: list) -> tuple[int, list[str]]:
+    """Send approved drafts. Returns (count, errors)."""
+    sent = 0
+    errors = []
+
+    for draft in drafts:
+        email_id = draft.email_id
+        draft_id = draft.id
+
+        try:
+            # Get original email
+            email_result = await db.execute(select(Email).where(Email.id == email_id))
+            email = email_result.scalar_one_or_none()
+            if not email:
+                raise RuntimeError(f'Email {email_id} not found')
+
+            # Get token and send
             token_data = await get_token(db)
             await send_reply(
                 token_data,
-                email_gmail_id,
-                email_from_email,
-                email_subject,
-                draft_body,
+                email.gmail_id,
+                email.from_email,
+                email.subject or '',
+                draft.body or (draft.edited_body or ''),
             )
 
             # Update status
-            existing_draft.sent_at = datetime.now(timezone.utc)
+            draft.sent_at = datetime.now(timezone.utc)
             email.status = 'sent'
 
             # Log auto-send
@@ -223,35 +310,12 @@ async def poll_emails(db: DB):
                 created_at=datetime.now(timezone.utc),
             ))
 
-            processed_count += 1
-            logger.info(f'Auto-processed email {email_id}: {email_subject}')
+            sent += 1
+            logger.info(f'Auto-sent draft {draft_id} for email {email_id}')
 
         except Exception as e:
             error_msg = str(e)
-            errors.append(f'Email {email_id}: {error_msg}')
-            logger.error(f'Failed to process email {email_id}: {error_msg}')
+            errors.append(f'Draft {draft_id}: {error_msg}')
+            logger.error(f'Failed to send draft {draft_id}: {error_msg}')
 
-    await db.commit()
-    return PollResponse(
-        new_emails=len(pending_emails),
-        processed_count=processed_count,
-        status='completed' if not errors else 'partial',
-        message=f'Processed {processed_count}/{len(pending_emails)} emails. Errors: {len(errors)}' if errors else f'Processed {processed_count} emails.',
-    )
-
-
-async def _get_thread_history(db: DB, email: Email) -> list:
-    """Get thread history for a given email."""
-    if not email.thread_id:
-        return []
-
-    result = await db.execute(
-        select(Email)
-        .where(
-            (Email.thread_id == email.thread_id) &
-            (Email.received_at < email.received_at) &
-            (Email.status != 'discarded')
-        )
-        .order_by(Email.received_at.asc())
-    )
-    return result.scalars().all()
+    return sent, errors
