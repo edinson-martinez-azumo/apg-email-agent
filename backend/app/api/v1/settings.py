@@ -74,13 +74,22 @@ async def get_settings(db: DB):
     )
 
 
+def _upsert_setting(db, existing_rows: dict, key: str, value: str, now: datetime) -> None:
+    if key in existing_rows:
+        existing_rows[key].value = value
+        existing_rows[key].updated_at = now
+    else:
+        db.add(AppSetting(key=key, value=value, updated_at=now))
+
+
 @router.put('/settings', response_model=SettingsResponse)
 async def update_settings(payload: SettingsUpdate, db: DB):
     now = datetime.now(timezone.utc)
 
-    keys_to_fetch = ['auto_sync', 'auto_generate', 'auto_send', 'polling_interval_seconds']
+    payload_keys = ['auto_sync', 'auto_generate', 'auto_send', 'polling_interval_seconds']
+    all_keys = payload_keys + ['auto_generate_enabled_at', 'auto_send_enabled_at']
     existing_result = await db.execute(
-        select(AppSetting).where(AppSetting.key.in_(keys_to_fetch))
+        select(AppSetting).where(AppSetting.key.in_(all_keys))
     )
     existing_rows = {row.key: row for row in existing_result.scalars().all()}
 
@@ -89,11 +98,16 @@ async def update_settings(payload: SettingsUpdate, db: DB):
         select(AppSetting).where(AppSetting.key == 'automated_mode')
     )
     if old_result:
-        old_value = old_result.value.lower() == 'true'
         old_result.value = 'true' if (payload.auto_sync and payload.auto_generate and payload.auto_send) else 'false'
         old_result.updated_at = now
 
-    for key in keys_to_fetch:
+    # Detect transitions false → true to record activation timestamps
+    was_generate = existing_rows.get('auto_generate')
+    was_send = existing_rows.get('auto_send')
+    prev_generate = (was_generate.value.lower() == 'true') if was_generate else False
+    prev_send = (was_send.value.lower() == 'true') if was_send else False
+
+    for key in payload_keys:
         if key in existing_rows:
             existing_rows[key].value = str(getattr(payload, key)).lower()
             existing_rows[key].updated_at = now
@@ -103,6 +117,12 @@ async def update_settings(payload: SettingsUpdate, db: DB):
                 value=str(getattr(payload, key)).lower(),
                 updated_at=now,
             ))
+
+    # Record when auto_generate / auto_send were first enabled (false → true)
+    if payload.auto_generate and not prev_generate:
+        _upsert_setting(db, existing_rows, 'auto_generate_enabled_at', now.isoformat(), now)
+    if payload.auto_send and not prev_send:
+        _upsert_setting(db, existing_rows, 'auto_send_enabled_at', now.isoformat(), now)
 
     await db.commit()
 

@@ -83,7 +83,10 @@ async def poll_emails(db: DB):
     """Poll for new emails and process them based on auto_* settings."""
     # Check settings
     result = await db.execute(
-        select(AppSetting).where(AppSetting.key.in_(['auto_sync', 'auto_generate', 'auto_send']))
+        select(AppSetting).where(AppSetting.key.in_([
+            'auto_sync', 'auto_generate', 'auto_send',
+            'auto_generate_enabled_at', 'auto_send_enabled_at',
+        ]))
     )
     rows = result.scalars().all()
     settings_dict = {row.key: row.value for row in rows}
@@ -91,6 +94,14 @@ async def poll_emails(db: DB):
     auto_sync = settings_dict.get('auto_sync', 'true').lower() == 'true'
     auto_generate = settings_dict.get('auto_generate', 'false').lower() == 'true'
     auto_send = settings_dict.get('auto_send', 'false').lower() == 'true'
+
+    # Only process emails received AFTER the feature was enabled
+    generate_since: datetime | None = None
+    send_since: datetime | None = None
+    if auto_generate and settings_dict.get('auto_generate_enabled_at'):
+        generate_since = datetime.fromisoformat(settings_dict['auto_generate_enabled_at'])
+    if auto_send and settings_dict.get('auto_send_enabled_at'):
+        send_since = datetime.fromisoformat(settings_dict['auto_send_enabled_at'])
 
     # Log the poll
     db.add(AuditLog(
@@ -113,6 +124,7 @@ async def poll_emails(db: DB):
             await db.rollback()
             return PollResponse(
                 new_emails=0,
+                reviewed_count=0,
                 generated_count=0,
                 status='error',
                 message=f'Sync failed: {str(e)}',
@@ -123,17 +135,16 @@ async def poll_emails(db: DB):
     generated_count = 0
     if auto_generate:
         # 2a: Analyze pending → reviewed
-        reviewed_count, analyze_errors = await _auto_analyze_emails(db)
+        reviewed_count, analyze_errors = await _auto_analyze_emails(db, since=generate_since)
         if analyze_errors:
             for err in analyze_errors:
                 logger.warning(f'Auto-analyze error: {err}')
 
         # 2b: Generate drafts from reviewed → draft_ready
-        reviewed_result = await db.execute(
-            select(Email).where(
-                Email.status == 'reviewed'
-            ).order_by(Email.received_at.asc())
-        )
+        reviewed_query = select(Email).where(Email.status == 'reviewed')
+        if generate_since:
+            reviewed_query = reviewed_query.where(Email.received_at >= generate_since)
+        reviewed_result = await db.execute(reviewed_query.order_by(Email.received_at.asc()))
         reviewed_emails = reviewed_result.scalars().all()
 
         if reviewed_emails:
@@ -163,29 +174,39 @@ async def poll_emails(db: DB):
             message='No pending emails.' if sync_count == 0 else f'Synced {sync_count}. Reviewed: {reviewed_count}. No reviewed emails awaiting generation.',
         )
 
-    # Step 3: Send generated drafts (if auto_send is ON)
+    # Step 3: Send auto-generated drafts (if auto_send is ON)
     sent_count = 0
     if auto_send:
-        # Get emails that now have drafts with approved_at (auto-generated drafts are auto-approved)
-        auto_approved_result = await db.execute(
-            select(Draft).where(
-                Draft.email_id.in_([e.id for e in reviewed_emails]),
-                Draft.approved_at.isnot(None),
-                Draft.sent_at.is_(None),
-            )
+        # Find draft_ready emails with auto-approved unsent drafts, filtered by send_since
+        draft_ready_query = (
+            select(Email).where(Email.status == 'draft_ready')
         )
-        drafts_to_send = auto_approved_result.scalars().all()
+        if send_since:
+            draft_ready_query = draft_ready_query.where(Email.received_at >= send_since)
+        draft_ready_result = await db.execute(draft_ready_query)
+        draft_ready_emails = draft_ready_result.scalars().all()
 
-        if drafts_to_send:
-            sent_count, send_errors = await _send_drafts(db, drafts_to_send)
-            await db.commit()
+        if draft_ready_emails:
+            auto_approved_result = await db.execute(
+                select(Draft).where(
+                    Draft.email_id.in_([e.id for e in draft_ready_emails]),
+                    Draft.approved_by == 'auto',
+                    Draft.approved_at.isnot(None),
+                    Draft.sent_at.is_(None),
+                )
+            )
+            drafts_to_send = auto_approved_result.scalars().all()
+
+            if drafts_to_send:
+                sent_count, send_errors = await _send_drafts(db, drafts_to_send)
+                await db.commit()
 
     return PollResponse(
         new_emails=0,
-        analyzed_count=analyzed_count,
+        reviewed_count=reviewed_count,
         generated_count=generated_count + sent_count,
         status='completed',
-        message=f'Synced: {sync_count}, Analyzed: {analyzed_count}, Generated: {generated_count}, Sent: {sent_count}',
+        message=f'Synced: {sync_count}, Analyzed: {reviewed_count}, Generated: {generated_count}, Sent: {sent_count}',
     )
 
 
@@ -206,15 +227,16 @@ async def _get_thread_history(db: DB, email: Email) -> list:
     return result.scalars().all()
 
 
-async def _auto_analyze_emails(db: DB) -> tuple[int, list[str]]:
+async def _auto_analyze_emails(db: DB, since: datetime | None = None) -> tuple[int, list[str]]:
     """Auto-analyze pending emails (extract intent + products, set to reviewed). Returns (count, errors)."""
     analyzed = 0
     errors = []
 
     # Get emails in 'pending' status (just synced, waiting for analysis)
-    pending_result = await db.execute(
-        select(Email).where(Email.status == 'pending').order_by(Email.received_at.asc())
-    )
+    pending_query = select(Email).where(Email.status == 'pending')
+    if since:
+        pending_query = pending_query.where(Email.received_at >= since)
+    pending_result = await db.execute(pending_query.order_by(Email.received_at.asc()))
     pending_emails = pending_result.scalars().all()
 
     if not pending_emails:
