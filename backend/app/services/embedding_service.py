@@ -178,14 +178,19 @@ async def _expand_variants(candidates: list[dict], db: AsyncSession, already_see
     if not candidates:
         return []
 
+    # Map prefix → base score so expanded variants inherit it
+    prefix_score: dict[str, float] = {}
     prefixes: set[str] = set()
     for c in candidates[:12]:
         sku = c['sku']
-        prefixes.add(sku)  # direct children: APG-XXX → APG-XXX-*
-        # Sibling expansion: strip last segment if short (variant indicator)
+        score = c.get('score') or 0.0
+        prefixes.add(sku)
+        prefix_score[sku] = score
         parts = sku.rsplit('-', 1)
         if len(parts) == 2 and len(parts[1]) <= 3 and parts[1].replace('/', '').isalnum():
-            prefixes.add(parts[0])  # base → APG-XXX-* (all siblings)
+            base = parts[0]
+            prefixes.add(base)
+            prefix_score[base] = max(prefix_score.get(base, 0.0), score)
 
     like_clauses = [f'sku LIKE :p{i}' for i in range(len(prefixes))]
     params = {f'p{i}': f'{prefix}-%' for i, prefix in enumerate(sorted(prefixes))}
@@ -198,7 +203,21 @@ async def _expand_variants(candidates: list[dict], db: AsyncSession, already_see
         LIMIT 40
     """), params)
     rows = result.mappings().all()
-    return [_row_to_dict(r) for r in rows if r['sku'] not in already_seen]
+    out = []
+    for r in rows:
+        if r['sku'] in already_seen:
+            continue
+        d = _row_to_dict(r)
+        # Inherit score from closest matching prefix
+        sku = d['sku']
+        inherited = 0.0
+        for prefix, s in prefix_score.items():
+            if sku.startswith(prefix + '-') or sku == prefix:
+                if s > inherited:
+                    inherited = s
+        d['score'] = round(inherited * 0.95, 4) if inherited else 0.6
+        out.append(d)
+    return out
 
 
 def _cap_with_oz(cap: str) -> str:
@@ -332,7 +351,10 @@ async def _fetch_exact_skus(query: str, db: AsyncSession) -> list[dict]:
     """))
     rows = result.mappings().all()
     sku_order = {s: i for i, s in enumerate(mentioned)}
-    return sorted([_row_to_dict(r) for r in rows], key=lambda r: sku_order.get(r['sku'], 999))
+    results = sorted([_row_to_dict(r) for r in rows], key=lambda r: sku_order.get(r['sku'], 999))
+    for r in results:
+        r['score'] = 1.0
+    return results
 
 
 async def search_products(query: str, db: AsyncSession, top_k: int = 12) -> list[dict]:

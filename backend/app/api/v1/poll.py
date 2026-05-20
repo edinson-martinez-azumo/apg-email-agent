@@ -293,6 +293,23 @@ async def _auto_analyze_emails(db: DB, since: datetime | None = None) -> tuple[i
             query = f"{email_subject} {email_body}".strip()
             products = await search_products(query, db, top_k=12)
 
+            # Exclude products rejected in earlier emails of the same thread
+            if email.thread_id:
+                thread_rejected_result = await db.execute(
+                    select(ProductMatch.sku).where(
+                        ProductMatch.status == 'rejected',
+                        ProductMatch.email_id.in_(
+                            select(Email.id).where(
+                                Email.thread_id == email.thread_id,
+                                Email.id != email_id,
+                            )
+                        ),
+                    )
+                )
+                thread_rejected_skus = {row[0] for row in thread_rejected_result.fetchall()}
+                if thread_rejected_skus:
+                    products = [p for p in products if p['sku'] not in thread_rejected_skus]
+
             # Save product matches
             for p in products:
                 existing = await db.execute(
@@ -307,7 +324,7 @@ async def _auto_analyze_emails(db: DB, since: datetime | None = None) -> tuple[i
                         email_id=email_id,
                         sku=p['sku'],
                         title=p['title'],
-                        score=None,
+                        score=p.get('score'),
                     ))
 
             # Step 3: Set status to reviewed
