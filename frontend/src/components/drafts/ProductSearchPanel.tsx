@@ -8,6 +8,7 @@ interface Props {
   onInsert: (html: string) => void
   editorReady: boolean
   insertedSkus: Set<string>
+  onRemoveSku?: (sku: string) => void
 }
 
 function isValid(val: string | null | undefined): boolean {
@@ -111,7 +112,7 @@ function ProductCard({ product, onInsert, editorReady, alreadyAdded }: { product
   )
 }
 
-export function ProductSearchPanel({ onInsert, editorReady, insertedSkus }: Props) {
+export function ProductSearchPanel({ onInsert, editorReady, insertedSkus, onRemoveSku }: Props) {
   const [query, setQuery] = useState('')
   const debouncedQuery = useDebounce(query.trim(), 350)
 
@@ -123,7 +124,7 @@ export function ProductSearchPanel({ onInsert, editorReady, insertedSkus }: Prop
   })
 
   return (
-    <div className="flex flex-col h-full rounded-xl border border-border overflow-hidden">
+    <div className="flex flex-col min-h-0 overflow-hidden">
       <div className="px-4 py-2.5 bg-muted/50 border-b border-border shrink-0 flex items-center gap-2">
         <div className="h-2 w-2 rounded-full bg-muted-foreground/40" />
         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
@@ -145,7 +146,7 @@ export function ProductSearchPanel({ onInsert, editorReady, insertedSkus }: Prop
       </div>
 
 
-      <div className="flex-1 overflow-y-auto p-3 space-y-2.5">
+      <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-2.5">
         {debouncedQuery.length < 2 && (
           <p className="text-xs text-muted-foreground text-center mt-8">
             Type at least 2 characters to search
@@ -178,6 +179,34 @@ export function ProductSearchPanel({ onInsert, editorReady, insertedSkus }: Prop
           />
         ))}
       </div>
+
+      {insertedSkus.size > 0 && (
+        <div className="shrink-0 border-t border-border">
+          <div className="px-4 py-2 bg-muted/30 flex items-center gap-2">
+            <div className="h-2 w-2 rounded-full bg-primary" />
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">In Draft</p>
+            <span className="ml-auto rounded-full bg-primary/10 text-primary px-2 py-0.5 text-xs font-medium">
+              {insertedSkus.size}
+            </span>
+          </div>
+          <div className="px-3 py-2 flex flex-col gap-1 max-h-40 overflow-y-auto">
+            {[...insertedSkus].map(sku => (
+              <div key={sku} className="flex items-center justify-between gap-2 rounded-md bg-muted/50 px-2.5 py-1.5">
+                <span className="text-xs font-mono text-foreground/80 truncate">{sku}</span>
+                <button
+                  onClick={() => onRemoveSku?.(sku)}
+                  className="text-muted-foreground hover:text-destructive transition-colors shrink-0 cursor-pointer"
+                  title={`Remove ${sku}`}
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

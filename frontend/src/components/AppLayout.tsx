@@ -1,36 +1,40 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { pollApi } from '@/lib/api'
-import { useEmails } from '@/hooks/useEmails'
 import { useSettings } from '@/hooks/useSettings'
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate()
   const location = useLocation()
   const { data: settings, isLoading: settingsLoading } = useSettings()
-  const { refetch: refetchEmails } = useEmails()
+  const queryClient = useQueryClient()
   const [lastPollAt, setLastPollAt] = useState<Date | null>(null)
+  const [isPolling, setIsPolling] = useState(false)
 
   const isAutomationActive = settings && (settings.auto_sync || settings.auto_generate || settings.auto_send)
   const intervalMs = (settings?.polling_interval_seconds ?? 60) * 1000
   const intervalRef = useRef<number | null>(null)
   const isFetchingRef = useRef(false)
 
-  const doPoll = useCallback(async () => {
-    if (isFetchingRef.current || !isAutomationActive) return
+  const doPoll = useCallback(async (force = false) => {
+    if (isFetchingRef.current) return
+    if (!force && !isAutomationActive) return
     isFetchingRef.current = true
+    if (force) setIsPolling(true)
 
     try {
-      await pollApi.trigger()
+      await pollApi.trigger(force)
       setLastPollAt(new Date())
-      await refetchEmails()
+      await queryClient.invalidateQueries({ queryKey: ['emails'] })
     } catch (err) {
       setLastPollAt(new Date())
       console.error('Poll failed:', err)
     } finally {
       isFetchingRef.current = false
+      if (force) setIsPolling(false)
     }
-  }, [isAutomationActive, refetchEmails])
+  }, [isAutomationActive, queryClient])
 
   // Poll once on mount if automation is active
   useEffect(() => {
@@ -58,7 +62,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   }, [isAutomationActive, intervalMs, doPoll])
 
   const handleManualPoll = useCallback(async () => {
-    await doPoll()
+    await doPoll(true)
   }, [doPoll])
 
   const secondsSinceLastPoll = lastPollAt
@@ -92,9 +96,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             </nav>
           </div>
 
-          {/* Polling status indicator */}
-          {isAutomationActive && !settingsLoading && settings && (
-            <div className="flex items-center gap-3">
+          {/* Polling status + manual refresh */}
+          <div className="flex items-center gap-3">
+            {isAutomationActive && !settingsLoading && settings && (
               <div className="flex items-center gap-2">
                 <div className="h-2.5 w-2.5 rounded-full bg-green-500 animate-pulse" />
                 <span className="text-xs text-white/80">
@@ -109,17 +113,23 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                   {secondsSinceLastPoll !== null && `(${secondsSinceLastPoll}s ago)`}
                 </span>
               </div>
-              <button
-                onClick={handleManualPoll}
-                className="text-white/80 hover:text-white transition-colors duration-150 cursor-pointer"
-                title="Manual poll"
-              >
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-              </button>
-            </div>
-          )}
+            )}
+            <button
+              onClick={handleManualPoll}
+              disabled={isPolling}
+              className="text-white/80 hover:text-white transition-colors duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Sync emails"
+            >
+              {isPolling
+                ? <span className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white animate-spin block" />
+                : (
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                )
+              }
+            </button>
+          </div>
         </div>
       </header>
 

@@ -377,7 +377,6 @@ function DraftContent({ email, readOnly = false }: { email: Email; readOnly?: bo
   const approveDraft = useApproveDraft()
   const sendDraft = useSendDraft()
   const discardDraft = useDiscardDraft()
-  const generate = useGenerateDraft()
   const backToReviewed = useBackToReviewed()
 
   const isSending = approveDraft.isPending || sendDraft.isPending
@@ -415,14 +414,6 @@ function DraftContent({ email, readOnly = false }: { email: Email; readOnly?: bo
     } catch {
       toast.error('Failed to discard')
     }
-  }
-
-  const handleRegenerate = () => {
-    const t = toast.loading('Regenerating draft…')
-    generate.mutate(email.id, {
-      onSuccess: () => toast.success('Draft regenerated', { id: t }),
-      onError: () => toast.error('Failed to regenerate', { id: t }),
-    })
   }
 
   const handleBackToReviewed = () => {
@@ -512,17 +503,6 @@ function DraftContent({ email, readOnly = false }: { email: Email; readOnly?: bo
                   : <span aria-hidden="true">↩</span>
                 }
                 {backToReviewed.isPending ? 'Moving…' : 'Back to Reviewed'}
-              </button>
-              <button
-                onClick={handleRegenerate}
-                disabled={generate.isPending || !draft}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-150 cursor-pointer"
-              >
-                {generate.isPending
-                  ? <span className="h-3 w-3 rounded-full border-2 border-foreground/30 border-t-foreground animate-spin" />
-                  : <span aria-hidden="true">↺</span>
-                }
-                {generate.isPending ? 'Regenerating…' : 'Regenerate'}
               </button>
             </>
           )}

@@ -75,6 +75,6 @@ export const settingsApi = {
 export const pollApi = {
   status: () =>
     http.get<PollStatus>('/api/v1/tasks/poll/status').then(r => r.data),
-  trigger: () =>
-    http.post<PollStatus>('/api/v1/tasks/poll').then(r => r.data),
+  trigger: (force = false) =>
+    http.post<PollStatus>(`/api/v1/tasks/poll${force ? '?force=true' : ''}`).then(r => r.data),
 }

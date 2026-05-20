@@ -3,7 +3,7 @@
 import logging
 import uuid
 from datetime import datetime, timezone
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select, func
 from app.core.deps import DB
@@ -79,8 +79,11 @@ async def get_poll_status(db: DB):
 
 
 @router.post('/poll', response_model=PollResponse)
-async def poll_emails(db: DB):
-    """Poll for new emails and process them based on auto_* settings."""
+async def poll_emails(db: DB, force: bool = Query(default=False)):
+    """Poll for new emails and process them based on auto_* settings.
+
+    force=true: always sync from Gmail regardless of auto_sync setting (manual refresh).
+    """
     # Check settings
     result = await db.execute(
         select(AppSetting).where(AppSetting.key.in_([
@@ -91,7 +94,7 @@ async def poll_emails(db: DB):
     rows = result.scalars().all()
     settings_dict = {row.key: row.value for row in rows}
 
-    auto_sync = settings_dict.get('auto_sync', 'true').lower() == 'true'
+    auto_sync = force or settings_dict.get('auto_sync', 'true').lower() == 'true'
     auto_generate = settings_dict.get('auto_generate', 'false').lower() == 'true'
     auto_send = settings_dict.get('auto_send', 'false').lower() == 'true'
 
@@ -107,7 +110,7 @@ async def poll_emails(db: DB):
     db.add(AuditLog(
         id=str(uuid.uuid4()),
         email_id=None,
-        action='auto_poll',
+        action='auto_poll' if not force else 'manual_poll',
         created_at=datetime.now(timezone.utc),
     ))
 
