@@ -250,14 +250,16 @@ async def generate_draft_for_email(email_id: str, db: DB):
     draft.confidence_score = confidence_score
     db.add(draft)
 
+    existing_skus = {m.sku for m in all_matches}
     for p in products:
-        db.add(ProductMatch(
-            id=str(uuid.uuid4()),
-            email_id=email_id,
-            sku=p['sku'],
-            title=p['title'],
-            score=None,
-        ))
+        if p['sku'] not in existing_skus:
+            db.add(ProductMatch(
+                id=str(uuid.uuid4()),
+                email_id=email_id,
+                sku=p['sku'],
+                title=p['title'],
+                score=None,
+            ))
 
     email.status = 'draft_ready'
     db.add(AuditLog(
@@ -857,6 +859,17 @@ async def back_to_reviewed(email_id: str, db: DB):
     draft = result.scalar_one_or_none()
     if draft:
         await db.delete(draft)
+
+    # Remove generate-only audit rows (score=None, status=None) to avoid duplicates on re-generate
+    pm_result = await db.execute(
+        select(ProductMatch).where(
+            ProductMatch.email_id == email_id,
+            ProductMatch.score == None,  # noqa: E711
+            ProductMatch.status == None,  # noqa: E711
+        )
+    )
+    for row in pm_result.scalars().all():
+        await db.delete(row)
 
     email.status = 'reviewed'
     db.add(AuditLog(
