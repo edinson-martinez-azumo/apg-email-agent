@@ -3,6 +3,7 @@ import { useEmailIntent } from '@/hooks/useEmails'
 interface Props {
   emailId: string
   confidenceScore?: number | null
+  variant?: 'full' | 'strip'
 }
 
 function ScoreBadge({ score }: { score: number }) {
@@ -23,8 +24,24 @@ function ScoreBadge({ score }: { score: number }) {
   )
 }
 
-export function CustomerIntent({ emailId, confidenceScore }: Props) {
+export function CustomerIntent({ emailId, confidenceScore, variant = 'full' }: Props) {
   const { data, isLoading, isError } = useEmailIntent(emailId)
+
+  if (variant === 'strip') {
+    const bullets = data?.bullets ?? []
+    return (
+      <div className="flex items-center gap-2 px-1 py-1 min-w-0">
+        <span className="h-2 w-2 rounded-full bg-amber-400 shrink-0" />
+        {isLoading && <span className="text-xs text-muted-foreground">Loading intent…</span>}
+        {!isLoading && bullets.length === 0 && <span className="text-xs text-muted-foreground">No intent extracted.</span>}
+        {bullets.length > 0 && (
+          <p className="text-xs text-foreground/80 truncate">
+            {bullets.join(' · ')}
+          </p>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col rounded-xl border border-border overflow-hidden shrink-0">

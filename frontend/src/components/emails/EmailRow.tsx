@@ -165,7 +165,82 @@ function PendingContent({ email }: { email: Email }) {
   )
 }
 
-// ─── Reviewed — show intent + products, allow generate or go back ──────────────
+// ─── Reviewed — products as protagonist ───────────────────────────────────────
+
+function CollapsibleEmailPanel({ email }: { email: Email }) {
+  const [expanded, setExpanded] = useState(false)
+  const [threadExpanded, setThreadExpanded] = useState(false)
+  const thread = (email as any).thread as Array<{ id: string; from_name?: string; from_email: string; received_at: string; body_text?: string }> | undefined
+  const senderLabel = email.from_name ?? email.from_email
+
+  return (
+    <div className="rounded-xl border border-border overflow-hidden">
+      {/* Collapsible header — always visible */}
+      <button
+        onClick={() => setExpanded(v => !v)}
+        className="w-full flex items-center gap-3 px-4 py-2.5 bg-muted/50 hover:bg-muted/80 transition-colors cursor-pointer text-left"
+      >
+        <svg className={`h-3.5 w-3.5 text-muted-foreground transition-transform shrink-0 ${expanded ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+        </svg>
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider shrink-0">Email</span>
+        <span className="text-xs text-muted-foreground truncate">
+          <span className="font-medium text-foreground/70">{senderLabel}</span>
+          {email.subject && <> · <span className="italic">{email.subject}</span></>}
+        </span>
+      </button>
+
+      {/* Expanded body */}
+      {expanded && (
+        <div className="border-t border-border">
+          <div className="px-4 py-3 border-b border-border space-y-1.5">
+            {email.subject && (
+              <p className="text-sm font-semibold text-foreground leading-snug">{email.subject}</p>
+            )}
+            <div className="flex flex-col gap-0.5">
+              {email.from_name && <p className="text-xs font-medium text-foreground/80">{email.from_name}</p>}
+              <p className="text-xs text-muted-foreground truncate">{email.from_email}</p>
+            </div>
+          </div>
+
+          <div className="px-4 py-3 max-h-52 overflow-y-auto">
+            <pre className="text-sm whitespace-pre-wrap font-sans text-foreground/80 leading-relaxed">
+              {email.body_text ?? '(no body)'}
+            </pre>
+          </div>
+
+          {thread && thread.length > 0 && (
+            <div className="border-t border-border px-4 py-2">
+              <button
+                onClick={() => setThreadExpanded(v => !v)}
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+              >
+                <svg className={`h-3 w-3 transition-transform ${threadExpanded ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                </svg>
+                {thread.length} earlier message{thread.length > 1 ? 's' : ''}
+              </button>
+              {threadExpanded && (
+                <div className="mt-2 flex flex-col gap-3 max-h-48 overflow-y-auto">
+                  {thread.map(msg => (
+                    <div key={msg.id} className="border-l-2 border-border pl-3">
+                      <p className="text-[10px] text-muted-foreground mb-1">
+                        {msg.from_name ? `${msg.from_name} · ${msg.from_email}` : msg.from_email}
+                      </p>
+                      <pre className="text-xs whitespace-pre-wrap font-sans text-foreground/70 leading-relaxed line-clamp-4">
+                        {msg.body_text ?? '(no body)'}
+                      </pre>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
 
 function ReviewedContent({ email }: { email: Email }) {
   const generate = useGenerateDraft()
@@ -201,31 +276,18 @@ function ReviewedContent({ email }: { email: Email }) {
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_352px] gap-4">
-        {/* Left column: CustomerIntent + Email */}
-        <div className="flex flex-col gap-4">
-          <div className="border-b border-border">
-            <CustomerIntent emailId={email.id} />
-          </div>
+    <div className="flex flex-col gap-3">
+      {/* Collapsible email — collapsed by default */}
+      <CollapsibleEmailPanel email={email} />
 
-          <div className="rounded-lg border border-border bg-muted/20">
-            <div className="px-3 py-2 border-b border-border">
-              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Customer Email</span>
-            </div>
-            <EmailMeta email={email} />
-            <EmailBody text={email.body_text} />
-          </div>
-        </div>
-
-        {/* Right column: Products panel - full height */}
-        <div>
-          <DetachedProductsPanel emailId={email.id} />
-        </div>
+      {/* Main 65/35 grid: products left, intent right */}
+      <div className="grid grid-cols-1 lg:grid-cols-[65%_35%] gap-4">
+        <DetachedProductsPanel emailId={email.id} />
+        <CustomerIntent emailId={email.id} />
       </div>
 
-      {/* Actions bar */}
-      <div className="border-t border-border px-5 py-3 flex items-center justify-between gap-3 flex-wrap">
+      {/* Sticky action bar */}
+      <div className="sticky bottom-0 bg-background border-t border-border px-5 py-3 flex items-center justify-between gap-3 flex-wrap z-10">
         <div className="flex items-center gap-2">
           {discardConfirm ? (
             <>
