@@ -7,9 +7,13 @@ dist/
 .uv/
 backend/gmail_token.json
 
+# DB dumps
+*.sql
+
 # Env
 .env
 .env.local
+.env.prod
 backend/.env.local
 frontend/.env.local
 

@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     gmail_scopes: str = 'https://mail.google.com/'
     smtp_user: str = ''
     smtp_password: str = ''
+    demo_target_email: str = 'edinson.martinez@azumo.co'
     poll_interval_minutes: int = 5
 
 

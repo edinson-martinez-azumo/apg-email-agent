@@ -13,7 +13,6 @@ router = APIRouter()
 
 _DATASET_PATH = pathlib.Path(__file__).resolve().parent.parent.parent.parent / 'data' / 'eval_dataset.json'
 _DEMO_CASES = {'case_01', 'case_02', 'case_03', 'case_06', 'case_08', 'case_10', 'case_11'}
-_DEMO_TARGET = 'matias@azumobd.com'
 
 _ADJ  = ['swift', 'bright', 'calm', 'bold', 'crisp', 'fresh', 'keen', 'warm', 'clear', 'sharp']
 _NOUN = ['maple', 'river', 'stone', 'cloud', 'petal', 'grove', 'ember', 'crest', 'meadow', 'tide']
@@ -50,7 +49,7 @@ async def send_case_email(case_id: str):
 
     mime = MIMEMultipart('alternative')
     mime['From'] = formataddr((f'{case["contact"]} - {case["customer"]}', smtp_user))
-    mime['To'] = _DEMO_TARGET
+    mime['To'] = settings.demo_target_email
     mime['Subject'] = f"{case['email_subject']} [{_run_tag()}]"
     mime['X-Eval-Case-Id'] = case_id
     mime.attach(MIMEText(case['email_body'], 'plain'))
@@ -64,4 +63,4 @@ async def send_case_email(case_id: str):
     except smtplib.SMTPException as e:
         raise HTTPException(status_code=502, detail=f'SMTP error: {e}')
 
-    return {'sent': True, 'case_id': case_id, 'to': _DEMO_TARGET, 'subject': case['email_subject']}
+    return {'sent': True, 'case_id': case_id, 'to': settings.demo_target_email, 'subject': case['email_subject']}
